@@ -5,7 +5,7 @@ import pytest
 import shutil
 import platform
 
-from common.openpype_common.distribution.dependencies.dependencies import (
+from ..dependencies import (
     FileTomlProvider,
     ServerTomlProvider,
     is_valid_toml,
@@ -18,14 +18,14 @@ from common.openpype_common.distribution.dependencies.dependencies import (
     remove_existing_from_venv
 )
 
-ROOT_FOLDER = os.path.abspath(os.path.join("..", "..", "..", "..", ".."))
+ROOT_FOLDER = os.getenv("OPENPYPE_ROOT") or "../../../pype"
 PURGE_TMP = True
 
 
 @pytest.fixture
 def openpype_toml_data():
-    provider = FileTomlProvider(os.path.join(ROOT_FOLDER,
-                                             "pyproject.toml"))
+    provider = FileTomlProvider(os.path.join("resources",
+                                             "openpype_pyproject.toml"))
     return provider.get_toml()
 
 
@@ -59,8 +59,8 @@ def tmpdir():
 
 
 def test_existing_file():
-    provider = FileTomlProvider(os.path.join(ROOT_FOLDER,
-                                             "pyproject.toml"))
+    provider = FileTomlProvider(os.path.join("resources",
+                                             "openpype_pyproject.toml"))
     _ = provider.get_toml()
 
 
@@ -176,8 +176,8 @@ def test_remove_existing_from_venv(tmpdir):
     base_venv_path = os.path.join(ROOT_FOLDER, ".venv")
     addon_venv_path = os.path.join(tmpdir, ".venv")
 
-    assert os.path.exists(base_venv_path), "Base venv must exist"
-    assert os.path.exists(addon_venv_path), "Addon venv must exist"
+    assert os.path.exists(base_venv_path), f"Base {base_venv_path} must exist"
+    assert os.path.exists(addon_venv_path), f"Addon {addon_venv_path} must exist"  # noqa
 
     removed = remove_existing_from_venv(base_venv_path, addon_venv_path)
 

@@ -16,7 +16,9 @@ import hashlib
 from common.openpype_common.distribution.file_handler import RemoteFileHandler
 
 
-ROOT_FOLDER = '../../../../..'
+# This tool depends to be deployed next to pype repo for time being
+# It is using pyproject.lock and tools/create_env.* script
+OPENPYPE_ROOT_FOLDER = os.getenv("OPENPYPE_ROOT") or '../../../pype'
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -76,11 +78,11 @@ class ServerTomlProvider(AbstractTomlProvider):
         response = requests.get(self.server_endpoint)
 
         for addon in response.json()["addons"]:
-            for _version_key, addon_ver in addon.get("versions", {}).items():
-                # TODO how to choose version
-                if not addon_ver.get("clientPyproject"):
-                    continue
-                tomls.append(addon_ver["clientPyproject"])
+            addon_ver = addon["versions"][addon["productionVersion"]]
+
+            if not addon_ver.get("clientPyproject"):
+                continue
+            tomls.append(addon_ver["clientPyproject"])
 
         return tomls
 
@@ -221,9 +223,13 @@ def prepare_new_venv(full_toml_data, venv_folder):
         ext = "sh"
         executable = "bash"
 
-    pype_root = os.path.abspath(ROOT_FOLDER)
+    pype_root = os.path.abspath(OPENPYPE_ROOT_FOLDER)
     create_env_script_path = os.path.join(pype_root, "tools",
                                           f"create_env.{ext}")
+    if not os.path.exists(create_env_script_path):
+        raise RuntimeError(
+            f"Expected create_env script here {create_env_script_path}")
+
     cmd_args = [
         executable,
         create_env_script_path,
@@ -448,7 +454,7 @@ def main(server_url):
 
     tmpdir = tempfile.mktemp()
 
-    base_toml_data = FileTomlProvider(os.path.join(ROOT_FOLDER,
+    base_toml_data = FileTomlProvider(os.path.join(OPENPYPE_ROOT_FOLDER,
                                       "pyproject.toml")).get_toml()
 
     addon_tomls = get_addon_tomls(server_url)
@@ -458,7 +464,7 @@ def main(server_url):
     if return_code != 0:
         raise RuntimeError("Preparation of venv failed!")
 
-    base_venv_path = os.path.join(ROOT_FOLDER, ".venv")
+    base_venv_path = os.path.join(OPENPYPE_ROOT_FOLDER, ".venv")
     addon_venv_path = os.path.join(tmpdir, ".venv")
 
     remove_existing_from_venv(base_venv_path, addon_venv_path)
