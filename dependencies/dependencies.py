@@ -16,9 +16,10 @@ import hashlib
 from common.openpype_common.distribution.file_handler import RemoteFileHandler
 
 
-# This tool depends to be deployed next to pype repo for time being
+# This tool expects be deployed in a directory next to pype repo for time being
 # It is using pyproject.lock and tools/create_env.* script
-OPENPYPE_ROOT_FOLDER = os.getenv("OPENPYPE_ROOT") or '../../../pype'
+OPENPYPE_ROOT_FOLDER = (os.getenv("OPENPYPE_ROOT") or
+                        os.path.join(os.path.dirname(__file__), "../../pype"))
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -50,7 +51,7 @@ class AbstractTomlProvider:
 class FileTomlProvider(AbstractTomlProvider):
     """Class that parses toml from 'source_url' into dictionary."""
     def __init__(self, source_url):
-        self.source_url = source_url
+        self.source_url = os.path.abspath(source_url)
 
     def get_toml(self):
         if not os.path.exists(self.source_url):
@@ -140,8 +141,8 @@ def merge_tomls(main_toml, addon_toml):
     """
     dependency_keyes = ["dependencies", "dev-dependencies"]
     for key in dependency_keyes:
-        main_poetry = main_toml["tool"]["poetry"][key]
-        addon_poetry = addon_toml["tool"]["poetry"][key]
+        main_poetry = main_toml["tool"]["poetry"].get(key) or {}
+        addon_poetry = addon_toml["tool"]["poetry"].get(key) or {}
         for dependency, dep_version in addon_poetry.items():
             if main_poetry.get(dependency):
                 main_version = main_poetry[dependency]
@@ -156,7 +157,7 @@ def merge_tomls(main_toml, addon_toml):
     # handle thirdparty
     platform_name = platform.system().lower()
 
-    addon_poetry = addon_toml["openpype"]["thirdparty"]
+    addon_poetry = addon_toml.get("openpype", {}).get("thirdparty", {})
     for dependency, dep_info in addon_poetry.items():
         main_poetry = main_toml["openpype"]["thirdparty"]  # reset level
         if main_poetry.get(dependency):
@@ -191,8 +192,9 @@ def get_full_toml(base_toml_data, addon_tomls):
     Returns:
         (dict) updated base .toml
     """
-    for addon_toml in addon_tomls:
-        addon_toml_data = toml.loads(addon_toml)
+    for addon_toml_data in addon_tomls:
+        if isinstance(addon_toml_data, str):
+            addon_toml_data = toml.loads(addon_toml_data)
         base_toml_data = merge_tomls(base_toml_data, addon_toml_data)
 
     return base_toml_data
@@ -452,7 +454,7 @@ def main(server_url):
             default value is http://localhost:5000
     """
 
-    tmpdir = tempfile.mktemp()
+    tmpdir = tempfile.mkdtemp()
 
     base_toml_data = FileTomlProvider(os.path.join(OPENPYPE_ROOT_FOLDER,
                                       "pyproject.toml")).get_toml()
@@ -478,3 +480,7 @@ def main(server_url):
     upload_zip_venv(venv_zip_path, server_endpoint)
 
     shutil.rmtree(tmpdir)
+
+
+if __name__ == '__main__':
+    main("http://localhost")

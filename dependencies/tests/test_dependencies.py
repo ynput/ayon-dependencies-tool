@@ -18,21 +18,23 @@ from ..dependencies import (
     remove_existing_from_venv
 )
 
-ROOT_FOLDER = os.getenv("OPENPYPE_ROOT") or "../../../pype"
+ROOT_FOLDER = os.getenv("OPENPYPE_ROOT") or \
+    os.path.join(os.path.dirname(__file__), "../../../pype")
+TEST_RESOURCES_DIR = os.path.join(os.path.dirname(__file__), "resources")
+TEST_OP_TOML = os.path.join(TEST_RESOURCES_DIR, "openpype_pyproject.toml")
 PURGE_TMP = True
 
 
 @pytest.fixture
 def openpype_toml_data():
-    provider = FileTomlProvider(os.path.join("resources",
-                                             "openpype_pyproject.toml"))
+    provider = FileTomlProvider(TEST_OP_TOML)
     return provider.get_toml()
 
 
 @pytest.fixture
 def addon_toml_to_compare_data():
     """Test file contains dummy data to test version compare"""
-    provider = FileTomlProvider(os.path.join("resources",
+    provider = FileTomlProvider(os.path.join(TEST_RESOURCES_DIR,
                                              "pyproject.toml"))
     return provider.get_toml()
 
@@ -40,7 +42,7 @@ def addon_toml_to_compare_data():
 @pytest.fixture
 def addon_toml_to_venv_data():
     """Test file contains 'close to live' toml for single addon."""
-    provider = FileTomlProvider(os.path.join("resources",
+    provider = FileTomlProvider(os.path.join(TEST_RESOURCES_DIR,
                                              "pyproject_clean.toml"))
     return provider.get_toml()
 
@@ -59,8 +61,7 @@ def tmpdir():
 
 
 def test_existing_file():
-    provider = FileTomlProvider(os.path.join("resources",
-                                             "openpype_pyproject.toml"))
+    provider = FileTomlProvider(TEST_OP_TOML)
     _ = provider.get_toml()
 
 
@@ -89,7 +90,7 @@ def test_merge_tomls(openpype_toml_data, addon_toml_to_compare_data):
 
 
 def test_get_full_toml(openpype_toml_data):
-    with open(os.path.join("resources", "pyproject.toml")) as fp:
+    with open(os.path.join(TEST_RESOURCES_DIR, "pyproject.toml")) as fp:
         addon_tomls = [fp.read()]
 
     result_toml = get_full_toml(openpype_toml_data, addon_tomls)
@@ -131,7 +132,7 @@ def _compare_resolved_tomp(result_toml):
 
 
 def test_get_venv_zip_name():
-    test_file_1_path = os.path.join("resources", "pyproject.toml")
+    test_file_1_path = os.path.join(TEST_RESOURCES_DIR, "pyproject.toml")
 
     test_file_1_name = get_venv_zip_name(test_file_1_path)
     test_file_2_name = get_venv_zip_name(test_file_1_path)
@@ -139,7 +140,7 @@ def test_get_venv_zip_name():
     assert test_file_1_name == test_file_2_name, \
         "Same file must result in same name"
 
-    test_file_2_path = os.path.join("resources", "pyproject_clean.toml")
+    test_file_2_path = os.path.join(TEST_RESOURCES_DIR, "pyproject_clean.toml")
     test_file_2_name = get_venv_zip_name(test_file_2_path)
 
     assert test_file_1_name != test_file_2_name, \
@@ -150,7 +151,7 @@ def test_get_venv_zip_name():
 
 
 def test_lock_to_toml_data():
-    lock_file_path = os.path.join("resources", "poetry.lock")
+    lock_file_path = os.path.join(TEST_RESOURCES_DIR, "poetry.lock")
 
     toml_data = lock_to_toml_data(lock_file_path)
 
