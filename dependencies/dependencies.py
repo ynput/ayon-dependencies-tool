@@ -12,6 +12,7 @@ import sys
 import sysconfig
 import hashlib
 import logging
+import json
 
 from common.openpype_common.distribution.file_handler import RemoteFileHandler
 
@@ -331,13 +332,13 @@ def zip_venv(venv_folder, zip_destination_path):
     RemoteFileHandler.zip(venv_folder, zip_destination_path)
 
 
-def upload_zip_venv(zip_path, server_endpoint):
+def upload_zip_venv(zip_path, server_endpoint, session):
     """Uploads zipped venv to the server for distribution.
 
     Args:
         zip_path (str): local path to zipped venv
         server_endpoint (str)
-
+        session (requests.Session)
     """
     if not os.path.exists(zip_path):
         raise RuntimeError(f"{zip_path} doesn't exist")
@@ -366,7 +367,7 @@ def upload_zip_venv(zip_path, server_endpoint):
             try:
 
                 file = {"file": chunk}
-                r = requests.post(server_endpoint, files=file, headers=headers)
+                r = session.post(server_endpoint, files=file, headers=headers)
                 print(
                     "r: %s, Content-Range: %s" % (r, headers['Content-Range']))
             except Exception as e:
@@ -472,18 +473,7 @@ def main(server_url):
     zip_venv(os.path.join(tmpdir, ".venv"),
              venv_zip_path)
 
-    server_endpoint = f"{server_url}/dependencies"
-    platform_name = platform.system().lower()
-    package_name = zip_file_name.replace(".zip", '')
-    checksum = calculate_hash(venv_zip_path)
-    data = {"name": package_name,
-            "platform": platform_name,
-            "size": os.stat(venv_zip_path),
-            "checksum": checksum}
-    response = requests.put(server_endpoint, data=data)
-    if response.status_code != 200:
-        raise RuntimeError("Cannot store package metadata on server")
-    upload_zip_venv(venv_zip_path, server_endpoint)
+    upload_to_server()
 
     shutil.rmtree(tmpdir)
 
@@ -497,6 +487,69 @@ def calculate_hash(file_url):
             chunk = f.read(8192)
 
     return checksum
+
+
+def upload_to_server(server_url, venv_zip_path):
+    token = login(server_url, "admin", "admin")
+    if not token:
+        raise RuntimeError("Cannot login to server")
+
+    session = requests.Session()
+    session.headers.update({
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}"
+    })
+
+    server_endpoint = f"{server_url}/api/dependencies"
+    platform_name = platform.system().lower()
+    package_name = os.path.basename(venv_zip_path).replace(".zip", '')
+    checksum = calculate_hash(venv_zip_path)
+    data = {"name": package_name,
+            "platform": platform_name,
+            "size": os.stat(venv_zip_path).st_size,
+            "checksum": str(checksum)}
+
+    response = session.put(server_endpoint, data=json.dumps(data))
+    if response.status_code != 201:
+        raise RuntimeError("Cannot store package metadata on server")
+
+    server_endpoint = f"{server_endpoint}/{package_name}/{platform_name}"
+    session.headers.update({
+        "Content-Type": "application/octet-stream"
+    })
+    upload_zip_venv(venv_zip_path, server_endpoint, session)
+
+
+def login(url, username, password):
+    """Use login to the server to receive token.
+
+    Args:
+        url (str): Server url.
+        username (str): User's username.
+        password (str): User's password.
+
+    Returns:
+        Union[str, None]: User's token if login was successfull.
+            Otherwise 'None'.
+    """
+
+    headers = {"Content-Type": "application/json"}
+    response = requests.post(
+        "{}/api/auth/login".format(url),
+        headers=headers,
+        json={
+            "name": username,
+            "password": password
+        }
+    )
+    token = None
+    # 200 - success
+    # 401 - invalid credentials
+    # *   - other issues
+    if response.status_code == 200:
+        token = response.json()["token"]
+
+    return token
 
 
 if __name__ == '__main__':
