@@ -6,12 +6,12 @@ import abc
 import six
 from packaging import version
 import subprocess
-import logging
 import platform
 import requests
 import sys
 import sysconfig
 import hashlib
+import logging
 
 from common.openpype_common.distribution.file_handler import RemoteFileHandler
 
@@ -150,7 +150,8 @@ def merge_tomls(main_toml, addon_toml):
                 dep_version = max(version.parse(dep_version),
                                   version.parse(main_version))
 
-            main_poetry[dependency] = str(dep_version)
+            if dep_version:
+                main_poetry[dependency] = str(dep_version)
 
         main_toml["tool"]["poetry"][key] = main_poetry
 
@@ -158,8 +159,8 @@ def merge_tomls(main_toml, addon_toml):
     platform_name = platform.system().lower()
 
     addon_poetry = addon_toml.get("openpype", {}).get("thirdparty", {})
+    main_poetry = main_toml["openpype"]["thirdparty"]  # reset level
     for dependency, dep_info in addon_poetry.items():
-        main_poetry = main_toml["openpype"]["thirdparty"]  # reset level
         if main_poetry.get(dependency):
             if dep_info.get(platform_name):
                 dep_version = dep_info[platform_name]["version"]
@@ -173,7 +174,8 @@ def merge_tomls(main_toml, addon_toml):
             if version.parse(dep_version) > version.parse(main_version):
                 dep_info = main_poetry[dependency]
 
-        main_poetry[dependency] = dep_info
+        if dep_info:
+            main_poetry[dependency] = dep_info
 
     main_toml["openpype"]["thirdparty"] = main_poetry
 
@@ -235,7 +237,8 @@ def prepare_new_venv(full_toml_data, venv_folder):
     cmd_args = [
         executable,
         create_env_script_path,
-        "-venv_path", os.path.join(venv_folder, ".venv")
+        "-venv_path", os.path.join(venv_folder, ".venv"),
+        "-verbose"
     ]
     return run_subprocess(cmd_args)
 
@@ -364,7 +367,6 @@ def upload_zip_venv(zip_path, server_endpoint):
 
                 file = {"file": chunk}
                 r = requests.post(server_endpoint, files=file, headers=headers)
-                print(r.json())
                 print(
                     "r: %s, Content-Range: %s" % (r, headers['Content-Range']))
             except Exception as e:
@@ -412,20 +414,13 @@ def run_subprocess(*args, **kwargs):
 
     proc = subprocess.Popen(*args, **kwargs)
 
-    full_output = ""
-    _stdout, _stderr = proc.communicate()
-    if _stdout:
-        _stdout = _stdout.decode("utf-8")
-        full_output += _stdout
-        logger.debug(_stdout)
+    _stdout = proc.stdout
+    _stderr = proc.stderr
 
-    if _stderr:
-        _stderr = _stderr.decode("utf-8")
-        # Add additional line break if output already contains stdout
-        if full_output:
-            full_output += "\n"
-        full_output += _stderr
-        logger.info(_stderr)
+    while proc.poll() is None:
+        line = proc.stdout.readline()
+        sys.stdout.write(str(line)+"\n")
+        sys.stdout.flush()
 
     if proc.returncode != 0:
         exc_msg = "Executing arguments was not successful: \"{}\"".format(args)
@@ -437,7 +432,7 @@ def run_subprocess(*args, **kwargs):
 
         raise RuntimeError(exc_msg)
 
-    return full_output
+    return proc.returncode
 
 
 def main(server_url):
@@ -461,6 +456,7 @@ def main(server_url):
 
     addon_tomls = get_addon_tomls(server_url)
     full_toml_data = get_full_toml(base_toml_data, addon_tomls)
+    print(f"pPreparing new venv in {tmpdir}")
     return_code = prepare_new_venv(full_toml_data, tmpdir)
 
     if return_code != 0:
@@ -472,14 +468,35 @@ def main(server_url):
     remove_existing_from_venv(base_venv_path, addon_venv_path)
     zip_file_name = get_venv_zip_name(os.path.join(tmpdir, "poetry.lock"))
     venv_zip_path = os.path.join(tmpdir, zip_file_name)
+    print(f"pZipping new venv to {venv_zip_path}")
     zip_venv(os.path.join(tmpdir, ".venv"),
              venv_zip_path)
 
-    # WIP - not real endpoint on v4
-    server_endpoint = server_url + "/api/addons?upload_dependencies"
+    server_endpoint = f"{server_url}/dependencies"
+    platform_name = platform.system().lower()
+    package_name = zip_file_name.replace(".zip", '')
+    checksum = calculate_hash(venv_zip_path)
+    data = {"name": package_name,
+            "platform": platform_name,
+            "size": os.stat(venv_zip_path),
+            "checksum": checksum}
+    response = requests.put(server_endpoint, data=data)
+    if response.status_code != 200:
+        raise RuntimeError("Cannot store package metadata on server")
     upload_zip_venv(venv_zip_path, server_endpoint)
 
     shutil.rmtree(tmpdir)
+
+
+def calculate_hash(file_url):
+    with open(file_url, "rb") as f:
+        checksum = hashlib.md5()
+        chunk = f.read(8192)
+        while chunk:
+            checksum.update(chunk)
+            chunk = f.read(8192)
+
+    return checksum
 
 
 if __name__ == '__main__':
