@@ -78,7 +78,7 @@ class ServerTomlProvider(AbstractTomlProvider):
     def get_tomls(self):
         tomls = []
 
-        for addon in get_production_addons(self.server_endpoint):
+        for addon in get_production_addons(self.server_endpoint).values():
             if not addon.get("clientPyproject"):
                 continue
             tomls.append(addon["clientPyproject"])
