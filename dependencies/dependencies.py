@@ -13,6 +13,7 @@ import sysconfig
 import hashlib
 import logging
 import json
+import argparse
 
 from common.openpype_common.distribution.file_handler import RemoteFileHandler
 
@@ -451,7 +452,7 @@ def run_subprocess(*args, **kwargs):
     return proc.returncode
 
 
-def main(server_url):
+def main(server_url, user, password):
     """Main endpoint to trigger full process.
 
     Pulls all active addons info from server, provides their pyproject.toml
@@ -488,7 +489,7 @@ def main(server_url):
     zip_venv(os.path.join(tmpdir, ".venv"),
              venv_zip_path)
 
-    upload_to_server()
+    upload_to_server(server_url, venv_zip_path, user, password)
 
     shutil.rmtree(tmpdir)
 
@@ -504,8 +505,17 @@ def calculate_hash(file_url):
     return checksum.hexdigest()
 
 
-def upload_to_server(server_url, venv_zip_path):
-    token = login(server_url, "admin", "admin")
+def upload_to_server(server_url, venv_zip_path, user, password):
+    """Creates and uploads package on the server
+    Args:
+        server_url (str)
+        venv_zip_path (str): local path to zipped venv
+        user (str)
+        password (str)
+    Raises:
+          (RuntimeError)
+    """
+    token = login(server_url, user, password)
     if not token:
         raise RuntimeError("Cannot login to server")
 
@@ -575,5 +585,15 @@ def login(url, username, password):
     return token
 
 
-if __name__ == '__main__':
-    main("http://localhost")
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--server-url",
+                        help="Url of v4 server")
+    parser.add_argument("--user",
+                        help="User name to login")
+    parser.add_argument("--password",
+                        help="Password to login")
+
+    kwargs = parser.parse_args(sys.argv[1:]).__dict__
+    main(**kwargs)
+
