@@ -77,16 +77,31 @@ class ServerTomlProvider(AbstractTomlProvider):
     def get_tomls(self):
         tomls = []
 
-        response = requests.get(self.server_endpoint)
-
-        for addon in response.json()["addons"]:
-            addon_ver = addon["versions"][addon["productionVersion"]]
-
-            if not addon_ver.get("clientPyproject"):
+        for addon in get_production_addons(self.server_endpoint):
+            if not addon.get("clientPyproject"):
                 continue
-            tomls.append(addon_ver["clientPyproject"])
+            tomls.append(addon["clientPyproject"])
 
         return tomls
+
+
+def get_production_addons(server_endpoint):
+    """Returns dict of dicts with addon info.
+
+    Dict keys are names of production addons (example_1.0.0)
+    """
+    response = requests.get(server_endpoint)
+
+    production_addons = {}
+    for addon in response.json()["addons"]:
+        production_version = addon.get("productionVersion")
+        if not production_version:
+            continue
+        addon_ver = addon["versions"][production_version]
+        addon_name = f"{addon['name']}_{production_version}"
+        production_addons[addon_name] = addon_ver
+
+    return production_addons
 
 
 def get_addon_tomls(server_url):
@@ -486,7 +501,7 @@ def calculate_hash(file_url):
             checksum.update(chunk)
             chunk = f.read(8192)
 
-    return checksum
+    return checksum.hexdigest()
 
 
 def upload_to_server(server_url, venv_zip_path):
@@ -500,15 +515,23 @@ def upload_to_server(server_url, venv_zip_path):
         "Authorization": f"Bearer {token}"
     })
 
-    server_endpoint = f"{server_url}/api/dependencies"
+    server_endpoint = f"{server_url}/api/addons?details=1"
+
+    supported_addons = {}
+    for name in get_production_addons(server_endpoint).keys():
+        splitted = name.split("_")
+        supported_addons[splitted[0]] = splitted[1]
+
     platform_name = platform.system().lower()
-    package_name = os.path.basename(venv_zip_path).replace(".zip", '')
+    package_name = os.path.splitext(os.path.basename(venv_zip_path))[0]
     checksum = calculate_hash(venv_zip_path)
     data = {"name": package_name,
             "platform": platform_name,
             "size": os.stat(venv_zip_path).st_size,
-            "checksum": str(checksum)}
+            "checksum": str(checksum),
+            "supportedAddons": supported_addons}
 
+    server_endpoint = f"{server_url}/api/dependencies"
     response = session.put(server_endpoint, data=json.dumps(data))
     if response.status_code != 201:
         raise RuntimeError("Cannot store package metadata on server")
