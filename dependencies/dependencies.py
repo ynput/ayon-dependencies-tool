@@ -359,35 +359,8 @@ def upload_zip_venv(zip_path, server_endpoint, session):
     if not os.path.exists(zip_path):
         raise RuntimeError(f"{zip_path} doesn't exist")
 
-    CHUNK_SIZE = 6000000
-
-    def read_in_chunks(file_object, CHUNK_SIZE):
-        while True:
-            data = file_object.read(CHUNK_SIZE)
-            if not data:
-                break
-            yield data
-
-    content_size = os.stat(zip_path).st_size
-
     with open(zip_path, "rb") as fp:
-        index = 0
-        offset = 0
-        headers = {}
-
-        for chunk in read_in_chunks(fp, CHUNK_SIZE):
-            offset = index + len(chunk)
-            headers['Content-Range'] = 'bytes %s-%s/%s' % (
-                index, offset - 1, content_size)
-            index = offset
-            try:
-
-                file = {"file": chunk}
-                r = session.post(server_endpoint, files=file, headers=headers)
-                print(
-                    "r: %s, Content-Range: %s" % (r, headers['Content-Range']))
-            except Exception as e:
-                print(e)
+        r = session.post(server_endpoint, data=fp)
 
 
 # TODO copy from openpype.lib.execute, could be imported directly??
