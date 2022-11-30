@@ -164,8 +164,8 @@ def merge_tomls(main_toml, addon_toml):
             if main_poetry.get(dependency):
                 main_version = main_poetry[dependency]
                 # max ==  smaller from both versions
-                dep_version = max(version.parse(dep_version),
-                                  version.parse(main_version))
+                dep_version = max(_version_parse(dep_version),
+                                  _version_parse(main_version))
 
             if dep_version:
                 main_poetry[dependency] = str(dep_version)
@@ -188,7 +188,7 @@ def merge_tomls(main_toml, addon_toml):
                 dep_version = dep_info["version"]
                 main_version = main_poetry[dependency]["version"]
 
-            if version.parse(dep_version) > version.parse(main_version):
+            if _version_parse(dep_version) > _version_parse(main_version):
                 dep_info = main_poetry[dependency]
 
         if dep_info:
@@ -197,6 +197,18 @@ def merge_tomls(main_toml, addon_toml):
     main_toml["openpype"]["thirdparty"] = main_poetry
 
     return main_toml
+
+
+def _version_parse(version_value):
+    """Handles different formats of versions
+
+    Parses:
+        "^2.0.0"
+        { version = "301", markers = "sys_platform == 'win32'" }
+    """
+    if isinstance(version_value, dict):
+        return version_value.get("version")
+    return version.parse(version_value)
 
 
 def get_full_toml(base_toml_data, addon_tomls):
