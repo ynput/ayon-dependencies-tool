@@ -535,7 +535,7 @@ def login(url, username, password):
         password (str): User's password.
 
     Returns:
-        Union[str, None]: User's token if login was successfull.
+        Union[str, None]: User's token if login was successful.
             Otherwise 'None'.
     """
 
@@ -546,7 +546,8 @@ def login(url, username, password):
         json={
             "name": username,
             "password": password
-        }
+        },
+        timeout=5
     )
     token = None
     # 200 - success
