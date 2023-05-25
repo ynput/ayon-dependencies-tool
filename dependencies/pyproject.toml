@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "dependencies-tool"
+version = "0.0.1"
+description = "Dependencies tool for Ayon"
+authors = ["Petr Kalis <petr.kalis@ynput.com>"]
+
+[tool.poetry.dependencies]
+appdirs = "^1.4"
+poetry="~1.5.0"
+python = ">=3.9,<4.0"
+pydantic = "^1.10.2"
+nxtools = "^1.6"
+six = "^1.15"
+requests = "^2.25.1"
+toml = "^0.10.2" # for parsing pyproject.toml
+ayon-python-api = "^0.1.6"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

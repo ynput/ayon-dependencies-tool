@@ -1,0 +1,4 @@
+/dependencies/.env
+/dependencies/.venv
+/dependencies/.poetry
+.pytest_cache

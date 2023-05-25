@@ -1,6 +1,8 @@
 import os
 import shutil
 import tempfile
+
+import ayon_api
 import toml
 import abc
 import six
@@ -14,14 +16,8 @@ import hashlib
 import logging
 import json
 import argparse
-
-from common.openpype_common.distribution.file_handler import RemoteFileHandler
-
-
-# This tool expects be deployed in a directory next to pype repo for time being
-# It is using pyproject.lock and tools/create_env.* script
-OPENPYPE_ROOT_FOLDER = (os.getenv("OPENPYPE_ROOT") or
-                        os.path.join(os.path.dirname(__file__), "../../pype"))
+from poetry.core.constraints.version import parse_constraint
+import zipfile
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -41,11 +37,12 @@ class AbstractTomlProvider:
     @abc.abstractmethod
     def get_tomls(self):
         """
-            Returns list of dict containing toml information
+            Returns dict of dict containing toml information
 
         Some providers (http) are returning all tomls in one go.
         Returns:
-            (list) of (dict)
+            (dict) of (dict)
+            { "example": {"poetry":{}..}}
         """
         pass
 
@@ -76,12 +73,12 @@ class ServerTomlProvider(AbstractTomlProvider):
         raise NotImplementedError
 
     def get_tomls(self):
-        tomls = []
+        tomls = {}
 
-        for addon in get_production_addons(self.server_endpoint).values():
+        for addon_name, addon in get_production_addons(self.server_endpoint).items():
             if not addon.get("clientPyproject"):
                 continue
-            tomls.append(addon["clientPyproject"])
+            tomls[addon_name] = addon["clientPyproject"]
 
         return tomls
 
@@ -91,10 +88,12 @@ def get_production_addons(server_endpoint):
 
     Dict keys are names of production addons (example_1.0.0)
     """
-    response = requests.get(server_endpoint)
+    con = ayon_api.create_connection()
+
+    response = con.get(server_endpoint)
 
     production_addons = {}
-    for addon in response.json()["addons"]:
+    for addon in response.data["addons"]:
         production_version = addon.get("productionVersion")
         if not production_version:
             continue
@@ -111,9 +110,9 @@ def get_addon_tomls(server_url):
     Args:
         server_url (str): host name with port, without endpoint
     Returns:
-        (list) of (dict)
+        (dict) of (dict)
     """
-    server_endpoint = server_url + "/api/addons?details=1"
+    server_endpoint = "addons?details=1"
 
     return ServerTomlProvider(server_endpoint).get_tomls()
 
@@ -143,7 +142,7 @@ def is_valid_toml(toml):
     return True
 
 
-def merge_tomls(main_toml, addon_toml):
+def merge_tomls(main_toml, addon_toml, addon_name):
     """Add dependencies from 'addon_toml' to 'main_toml'.
 
     Looks for mininimal compatible version from both tomls.
@@ -155,6 +154,9 @@ def merge_tomls(main_toml, addon_toml):
 
     Returns:
         (dict): updated 'main_toml' with additional/updated dependencies
+
+    Raises:
+        ValueError if any tuple of main and addon dependency cannot be resolved
     """
     dependency_keyes = ["dependencies", "dev-dependencies"]
     for key in dependency_keyes:
@@ -163,12 +165,15 @@ def merge_tomls(main_toml, addon_toml):
         for dependency, dep_version in addon_poetry.items():
             if main_poetry.get(dependency):
                 main_version = main_poetry[dependency]
-                # max ==  smaller from both versions
-                dep_version = max(_version_parse(dep_version),
-                                  _version_parse(main_version))
+                resolved_vers = _get_correct_version(main_version, dep_version)
+            else:
+                resolved_vers = str(dep_version)
 
-            if dep_version:
-                main_poetry[dependency] = str(dep_version)
+            if str(resolved_vers) == "<empty>":
+                resolved_vers = ">=3.9.1" # TEMP
+                #raise ValueError(f"Version {dep_version} cannot be resolved against {main_version} for {addon_name}")  # noqa
+
+            main_poetry[dependency] = resolved_vers
 
         main_toml["tool"]["poetry"][key] = main_poetry
 
@@ -176,7 +181,7 @@ def merge_tomls(main_toml, addon_toml):
     platform_name = platform.system().lower()
 
     addon_poetry = addon_toml.get("openpype", {}).get("thirdparty", {})
-    main_poetry = main_toml["openpype"]["thirdparty"]  # reset level
+    main_poetry = main_toml["openpype"].get("thirdparty", {})  # reset level
     for dependency, dep_info in addon_poetry.items():
         if main_poetry.get(dependency):
             if dep_info.get(platform_name):
@@ -188,8 +193,12 @@ def merge_tomls(main_toml, addon_toml):
                 dep_version = dep_info["version"]
                 main_version = main_poetry[dependency]["version"]
 
-            if _version_parse(dep_version) > _version_parse(main_version):
+            result_range = _get_correct_version(main_version, dep_version)
+            if (str(result_range) != "<empty>" and
+                    parse_constraint(dep_version).allows(result_range)):
                 dep_info = main_poetry[dependency]
+            else:
+                raise ValueError(f"Cannot result {dependency} with {dep_info} for {addon_name}")  # noqa
 
         if dep_info:
             main_poetry[dependency] = dep_info
@@ -197,6 +206,23 @@ def merge_tomls(main_toml, addon_toml):
     main_toml["openpype"]["thirdparty"] = main_poetry
 
     return main_toml
+
+
+def _get_correct_version(main_version, dep_version):
+    """Return resolved version from two version (constraint).
+
+    Arg:
+        main_version (str): version or constraint ("3.6.1", "^3.7")
+        dep_version (str): dtto
+    Returns:
+        (VersionRange| EmptyConstraint if cannot be resolved)
+    """
+    if not main_version:
+        return parse_constraint(dep_version)
+    if not dep_version:
+        return parse_constraint(main_version)
+    return parse_constraint(dep_version).intersect(
+                parse_constraint(main_version))
 
 
 def _version_parse(version_value):
@@ -223,10 +249,11 @@ def get_full_toml(base_toml_data, addon_tomls):
     Returns:
         (dict) updated base .toml
     """
-    for addon_toml_data in addon_tomls:
+    for addon_name, addon_toml_data in addon_tomls.items():
         if isinstance(addon_toml_data, str):
             addon_toml_data = toml.loads(addon_toml_data)
-        base_toml_data = merge_tomls(base_toml_data, addon_toml_data)
+        base_toml_data = merge_tomls(base_toml_data, addon_toml_data,
+                                     addon_name)
 
     return base_toml_data
 
@@ -256,9 +283,8 @@ def prepare_new_venv(full_toml_data, venv_folder):
         ext = "sh"
         executable = "bash"
 
-    pype_root = os.path.abspath(OPENPYPE_ROOT_FOLDER)
-    create_env_script_path = os.path.join(pype_root, "tools",
-                                          f"create_env.{ext}")
+    create_env_script_path = os.path.abspath(os.path.join("tools",
+                                             f"create_env.{ext}"))
     if not os.path.exists(create_env_script_path):
         raise RuntimeError(
             f"Expected create_env script here {create_env_script_path}")
@@ -357,7 +383,25 @@ def remove_existing_from_venv(base_venv_path, addons_venv_path):
 
 def zip_venv(venv_folder, zip_destination_path):
     """Zips newly created venv to single .zip file."""
-    RemoteFileHandler.zip(venv_folder, zip_destination_path)
+    temp_dir_to_zip_s = venv_folder.replace("\\", "/")
+    with zipfile.ZipFile(zip_destination_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for root, dirnames, filenames in os.walk(venv_folder):
+            root_s = root.replace("\\", "/")
+            zip_root = root_s.replace(temp_dir_to_zip_s, "").strip("/")
+            for name in sorted(dirnames):
+                path = os.path.normpath(os.path.join(root, name))
+                zip_path = name
+                if zip_root:
+                    zip_path = "/".join((zip_root, name))
+                zipf.write(path, zip_path)
+
+            for name in filenames:
+                path = os.path.normpath(os.path.join(root, name))
+                zip_path = name
+                if zip_root:
+                    zip_path = "/".join((zip_root, name))
+                if os.path.isfile(path):
+                    zipf.write(path, zip_path)
 
 
 def upload_zip_venv(zip_path, server_endpoint, session):
@@ -437,7 +481,7 @@ def run_subprocess(*args, **kwargs):
     return proc.returncode
 
 
-def main(server_url, user, password):
+def main(server_url, api_key, main_toml_path):
     """Main endpoint to trigger full process.
 
     Pulls all active addons info from server, provides their pyproject.toml
@@ -450,11 +494,10 @@ def main(server_url, user, password):
         server_url (string): hostname + port for v4 Server
             default value is http://localhost:5000
     """
-
+    print("In Main")
     tmpdir = tempfile.mkdtemp()
 
-    base_toml_data = FileTomlProvider(os.path.join(OPENPYPE_ROOT_FOLDER,
-                                      "pyproject.toml")).get_toml()
+    base_toml_data = FileTomlProvider(main_toml_path).get_toml()
 
     addon_tomls = get_addon_tomls(server_url)
     full_toml_data = get_full_toml(base_toml_data, addon_tomls)
@@ -464,17 +507,18 @@ def main(server_url, user, password):
     if return_code != 0:
         raise RuntimeError("Preparation of venv failed!")
 
-    base_venv_path = os.path.join(OPENPYPE_ROOT_FOLDER, ".venv")
-    addon_venv_path = os.path.join(tmpdir, ".venv")
+    # venv should be complete
+    # base_venv_path = os.path.join(OPENPYPE_ROOT_FOLDER, ".venv")
+    #addon_venv_path = os.path.join(tmpdir, ".venv")
 
-    remove_existing_from_venv(base_venv_path, addon_venv_path)
+    # remove_existing_from_venv(base_venv_path, addon_venv_path)
     zip_file_name = get_venv_zip_name(os.path.join(tmpdir, "poetry.lock"))
     venv_zip_path = os.path.join(tmpdir, zip_file_name)
     print(f"pZipping new venv to {venv_zip_path}")
     zip_venv(os.path.join(tmpdir, ".venv"),
              venv_zip_path)
 
-    upload_to_server(server_url, venv_zip_path, user, password)
+    upload_to_server(server_url, venv_zip_path)
 
     shutil.rmtree(tmpdir)
 
@@ -510,7 +554,7 @@ def upload_to_server(server_url, venv_zip_path, user, password):
         "Authorization": f"Bearer {token}"
     })
 
-    server_endpoint = f"{server_url}/api/addons?details=1"
+    server_endpoint = "addons?details=1"
 
     supported_addons = {}
     for name in get_production_addons(server_endpoint).keys():
@@ -526,7 +570,8 @@ def upload_to_server(server_url, venv_zip_path, user, password):
             "checksum": str(checksum),
             "supportedAddons": supported_addons}
 
-    server_endpoint = f"{server_url}/api/dependencies"
+    # TODO
+    server_endpoint = "dependencies"
     response = session.put(server_endpoint, data=json.dumps(data))
     if response.status_code != 201:
         raise RuntimeError("Cannot store package metadata on server")
@@ -572,14 +617,27 @@ def login(url, username, password):
 
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--server-url",
                         help="Url of v4 server")
-    parser.add_argument("--user",
-                        help="User name to login")
-    parser.add_argument("--password",
-                        help="Password to login")
+    parser.add_argument("--api-key",
+                        help="Api key")
+    parser.add_argument("--main-toml-path",
+                        help="Path to universal toml with basic dependencies")
 
+    print(sys.argv[1:])
     kwargs = parser.parse_args(sys.argv[1:]).__dict__
+    print(kwargs)
+
+    kwargs = {
+        "server_url": "https://ayon.dev",
+
+        #'main_toml_path': 'C:\\Users\\petrk\\PycharmProjects\\Pype3.0\\pype\\pyproject.toml'
+        "main_toml_path": "C:\\Users\\petrk\\PycharmProjects\\Pype3.0\\openpypev4-dependencies-tool\\dependencies\\tests\\resources\\pyproject_clean.toml"
+    }
+    os.environ["AYON_SERVER_URL"] = kwargs["server_url"]
+    os.environ["AYON_API_KEY"] = kwargs["api_key"]
+
     main(**kwargs)
 
