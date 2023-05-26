@@ -14,7 +14,7 @@ PS> .\create_env.ps1
 .EXAMPLE
 
 Print verbose information from Poetry:
-PS> .\create_env.ps1 --verbose
+PS> .\create_env.ps1 -venv_path PTH_TO_NEW_VENV -verbose
 
 #>
 
@@ -31,7 +31,6 @@ $current_dir = Get-Location
 $script_dir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 $openpype_root = (Get-Item $script_dir).parent.FullName
 $env:PSModulePath = $env:PSModulePath + ";$($openpype_root)\tools\modules\powershell"
-
 
 
 function Exit-WithCode($exitcode) {
@@ -144,19 +143,6 @@ if (-not (Test-Path 'env:_INSIDE_OPENPYPE_TOOL')) {
     Write-Host $art -ForegroundColor DarkGreen
 }
 
-# Enable if PS 7.x is needed.
-# Show-PSWarning
-
-# $version_file = Get-Content -Path "$($openpype_root)\openpype\version.py"
-# $result = [regex]::Matches($version_file, '__version__ = "(?<version>\d+\.\d+.\d+.*)"')
-# $openpype_version = $result[0].Groups['version'].Value
-# if (-not $openpype_version) {
-#   Write-Color -Text "!!! ", "Cannot determine OpenPype version." -Color Red, Yellow
-#   Set-Location -Path $current_dir
-#   Exit-WithCode 1
-# }
-# Write-Color -Text ">>> ", "Found OpenPype version ", "[ ", $($openpype_version), " ]" -Color Green, Gray, Cyan, White, Cyan
-
 Test-Python
 
 Write-Color -Text ">>> ", "Reading Poetry ... " -Color Green, Gray -NoNewline
@@ -188,19 +174,13 @@ if ($venv_path){
 
 
 $startTime = [int][double]::Parse((Get-Date -UFormat %s))
+Write-Color -Text ">>> ", "Installing dependencies at $($venv_path)." -Color Green, White
 & "$env:POETRY_HOME\bin\poetry" install --no-root $poetry_verbosity --ansi
 if ($LASTEXITCODE -ne 0) {
     Write-Color -Text "!!! ", "Poetry command failed." -Color Red, Yellow
     Set-Location -Path $current_dir
     Exit-WithCode 1
 }
-# Write-Color -Text ">>> ", "Installing pre-commit hooks ..." -Color Green, White
-# & "$env:POETRY_HOME\bin\poetry" run pre-commit install
-# if ($LASTEXITCODE -ne 0) {
-#     Write-Color -Text "!!! ", "Installation of pre-commit hooks failed." -Color Red, Yellow
-#     Set-Location -Path $current_dir
-#     Exit-WithCode 1
-# }
 
 $endTime = [int][double]::Parse((Get-Date -UFormat %s))
 Set-Location -Path $current_dir
