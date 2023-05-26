@@ -12,3 +12,17 @@ all clients.
 It is expected to be run on machine that has set reasonable development environment (cmake probably).
 
 Should be standalone, not depending on Openpype libraries.
+
+`dependencies/.env` must be created with filled env vars:
+- AYON_API_KEY=api key for service account from Ayon Server
+- AYON_SERVER_URL=Ayon server tool should communicate with
+- AY_ADDON_NAME=dependencies_tool
+- AY_ADDON_VERSION=0.0.1
+
+Entry point for manual triggering is `dependencies/start.ps1`.
+
+Implemented commands:
+- `install` - creates `dependencies/.venv` with requirements for this tool
+- `create` - runs main process to create new dependency package and uploads it. Expects `--main-toml-path` argument pointing
+    to base `pyproject.toml` that should contain all requirements bundled with Ayon Desktop.
+- `listen` - starts service connecting to Ayon server and listening for events to trigger main process (TBD)

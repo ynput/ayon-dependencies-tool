@@ -1,11 +1,12 @@
 # Receive first positional argument
-Param([Parameter(Position=0)]$FunctionName)
+param (
+    [Parameter(Mandatory=$true)]
+    [string]$FunctionName,
+    [Parameter(Mandatory=$false)]
+    [string]$maintomlpath
+)
 
-$arguments=$ARGS
-$poetry_verbosity=$null
-if($arguments -eq "--verbose") {
-    $poetry_verbosity="-vvv"
-}
+$poetry_verbosity="-vvv"
 
 $current_dir = Get-Location
 $script_dir_rel = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
@@ -30,9 +31,10 @@ function Install-Poetry() {
 }
 
 function install {
+    # install dependencies for tool
     & python -m ensurepip
     & pip install --no-cache --upgrade pip setuptools poetry
-    & poetry config virtualenvs.path  "$($script_dir)\.venv" --local
+    & poetry config virtualenvs.in-project true
     & poetry install --no-interaction --no-ansi $poetry_verbosity
 }
 
@@ -41,6 +43,7 @@ function run_listener {
 }
 
 function set_env {
+  # set all env vars in .env file
   if (-not (Test-Path "$($script_dir)\.env")) {
     Write-Host "!!! .env file must be prepared!" -ForegroundColor red
     Exit-WithCode 1
@@ -73,8 +76,7 @@ function main {
     set_env
   } elseif ($FunctionName -eq "create") {
     set_env
-    $toml_path = "C:\Users\petrk\PycharmProjects\Pype3.0\pype\pyproject.toml"
-    & "$($script_dir)\.venv\Scripts\python" "$($script_dir)\dependencies.py" --server-url $($env:AYON_SERVER_URL) --api-key $($env:AYON_API_KEY) --main-toml-path $toml_path
+    & "$($script_dir)\.venv\Scripts\python" "$($script_dir)\dependencies.py" --server-url $($env:AYON_SERVER_URL) --api-key $($env:AYON_API_KEY) --main-toml-path $maintomlpath
   } else {
     Write-Host "Unknown function ""$FunctionName"""
   }
