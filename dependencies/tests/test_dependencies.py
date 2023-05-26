@@ -69,23 +69,23 @@ def tmpdir():
     [
         (
             "3.6.1",
-            "^3.7",
+            "^3.9",
             "<empty>",
         ),
         (
-            "3.7.*",
-            "^3.7",
-            ">=3.7,<3.8.0",
+            "3.9.*",
+            "^3.9",
+            ">=3.9,<3.10.dev0",
         ),
         (
-                "3.7.5",
-                "3.7.8",
+                "3.9.5",
+                "3.9.8",
                 "<empty>",
         ),
         (
                 None,
-                "3.7.8",
-                "3.7.8",
+                "3.9.8",
+                "3.9.8",
         )
     ]
 )
@@ -118,13 +118,15 @@ def test_is_valid_toml_invalid(openpype_toml_data):
 
 
 def test_merge_tomls(openpype_toml_data, addon_toml_to_compare_data):
-    result_toml = merge_tomls(openpype_toml_data, addon_toml_to_compare_data)
+    result_toml = merge_tomls(openpype_toml_data, addon_toml_to_compare_data,
+                              "dummy_addon_0.0.1")
     _compare_resolved_tomp(result_toml)
 
 
 def test_get_full_toml(openpype_toml_data):
+    addon_tomls = {}
     with open(os.path.join(TEST_RESOURCES_DIR, "pyproject.toml")) as fp:
-        addon_tomls = [fp.read()]
+        addon_tomls["dummy_addon_0.0.1"] = fp.read()
 
     result_toml = get_full_toml(openpype_toml_data, addon_tomls)
     _compare_resolved_tomp(result_toml)
@@ -133,7 +135,7 @@ def test_get_full_toml(openpype_toml_data):
 def _compare_resolved_tomp(result_toml):
     res_dependencies = result_toml["tool"]["poetry"]["dependencies"]
     dep_version = res_dependencies["aiohttp"]
-    assert dep_version == ">=3.7.0,<3.8.0"
+    assert dep_version == ">=3.7,<3.8.dev0"
 
     dep_version = res_dependencies["new_dependency"]
     assert dep_version == "^1.0.0"
@@ -144,61 +146,72 @@ def _compare_resolved_tomp(result_toml):
 
     platform_name = platform.system().lower()
     third_party = result_toml["openpype"]["thirdparty"]
-    assert str(third_party.get("ffmpeg")) == "<empty>"
+    assert str(third_party["ffmpeg"][platform_name]["version"]) == "4.4"
 
     res_dependencies = (third_party["oiio"][platform_name])
     dep_version = res_dependencies["version"]
-    assert dep_version == "2.1.0"
+    assert dep_version == "2.3.10"
 
     res_dependencies = (third_party["ocioconfig"])
     dep_version = res_dependencies["version"]
-    assert dep_version == "1.0.0"
+    assert dep_version == "1.0.2"
 
 
-# def test_get_venv_zip_name():
-#     test_file_1_path = os.path.join(TEST_RESOURCES_DIR, "pyproject.toml")
+def test_get_venv_zip_name():
+    test_file_1_path = os.path.join(TEST_RESOURCES_DIR, "pyproject.toml")
+
+    test_file_1_name = get_venv_zip_name(test_file_1_path)
+    test_file_2_name = get_venv_zip_name(test_file_1_path)
+
+    assert test_file_1_name == test_file_2_name, \
+        "Same file must result in same name"
+
+    test_file_2_path = os.path.join(TEST_RESOURCES_DIR, "pyproject_clean.toml")
+    test_file_2_name = get_venv_zip_name(test_file_2_path)
+
+    assert test_file_1_name != test_file_2_name, \
+        "Different file must result in different name"
+
+    with pytest.raises(FileNotFoundError):
+        get_venv_zip_name(test_file_1_path + ".ntext")
+
+
+def test_lock_to_toml_data():
+    lock_file_path = os.path.join(TEST_RESOURCES_DIR, "poetry.lock")
+
+    toml_data = lock_to_toml_data(lock_file_path)
+
+    assert (toml_data["tool"]["poetry"]["dependencies"]["acre"] == "1.0.0",
+            "Wrong version, must be '1.0.0'")
+
+    assert is_valid_toml(toml_data), "Must contain all required keys"
+
+
+def test_prepare_new_venv(addon_toml_to_venv_data, tmpdir):
+    """Creates zip of simple venv from mock addon pyproject data"""
+    print(f"Creating new venv in {tmpdir}")
+    return_code = prepare_new_venv(addon_toml_to_venv_data, tmpdir)
+
+    assert return_code != 1, "Prepare of new venv failed"
+
+    inst_lib = os.path.join(tmpdir, '.venv', 'Lib', 'site-packages', 'aiohttp')
+    assert os.path.exists(inst_lib), "aiohttp should be installed"
+
+
+# @pytest.mark.long_running
+# def test_remove_existing_from_venv(openpype_toml_data, tmpdir):
+#     """New venv shouldn't contain libraries already in build venv.
 #
-#     test_file_1_name = get_venv_zip_name(test_file_1_path)
-#     test_file_2_name = get_venv_zip_name(test_file_1_path)
+#     test_prepare_new_venv must be enabled
+#     """
+#     base_venv_path = os.path.join(tmpdir, ".base_venv")
+#     os.makedirs(base_venv_path)
+#     shutil.copy(TEST_OP_TOML, os.path.join(base_venv_path, "pyproject.toml"))
+#     return_code = prepare_new_venv(openpype_toml_data, base_venv_path)
 #
-#     assert test_file_1_name == test_file_2_name, \
-#         "Same file must result in same name"
+#     assert return_code != 1, "Prepare of base venv failed"
 #
-#     test_file_2_path = os.path.join(TEST_RESOURCES_DIR, "pyproject_clean.toml")
-#     test_file_2_name = get_venv_zip_name(test_file_2_path)
-#
-#     assert test_file_1_name != test_file_2_name, \
-#         "Different file must result in different name"
-#
-#     with pytest.raises(FileNotFoundError):
-#         get_venv_zip_name(test_file_1_path + ".ntext")
-#
-#
-# def test_lock_to_toml_data():
-#     lock_file_path = os.path.join(TEST_RESOURCES_DIR, "poetry.lock")
-#
-#     toml_data = lock_to_toml_data(lock_file_path)
-#
-#     assert (toml_data["tool"]["poetry"]["dependencies"]["acre"] == "1.0.0",
-#             "Wrong version, must be '1.0.0'")
-#
-#     assert is_valid_toml(toml_data), "Must contain all required keys"
-#
-#
-# def test_prepare_new_venv(addon_toml_to_venv_data, tmpdir):
-#     """Creates zip of simple venv from mock addon pyproject data"""
-#     print(f"Creating new venv in {tmpdir}")
-#     return_code = prepare_new_venv(addon_toml_to_venv_data, tmpdir)
-#
-#     assert return_code != 1, "Prepare of new venv failed"
-#
-#     inst_lib = os.path.join(tmpdir, '.venv', 'Lib', 'site-packages', 'aiohttp')
-#     assert os.path.exists(inst_lib), "aiohttp should be installed"
-#
-#
-# def test_remove_existing_from_venv(tmpdir):
-#     """New venv shouldn't contain libraries already in build venv."""
-#     base_venv_path = os.path.join(ROOT_FOLDER, ".venv")
+#     base_venv_path = os.path.join(base_venv_path, ".venv")
 #     addon_venv_path = os.path.join(tmpdir, ".venv")
 #
 #     assert os.path.exists(base_venv_path), f"Base {base_venv_path} must exist"
