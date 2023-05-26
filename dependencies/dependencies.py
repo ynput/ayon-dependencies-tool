@@ -242,7 +242,7 @@ def get_full_toml(base_toml_data, addon_tomls):
 
     Args:
         base_toml_data (dict): content of pyproject.toml in the root
-        addon_tomls (list): content of addon pyproject.toml
+        addon_tomls (dict): content of addon pyproject.toml
     Returns:
         (dict) updated base .toml
     """
@@ -280,8 +280,10 @@ def prepare_new_venv(full_toml_data, venv_folder):
         ext = "sh"
         executable = "bash"
 
-    create_env_script_path = os.path.abspath(os.path.join("tools",
-                                             f"create_env.{ext}"))
+    create_env_script_path = os.path.abspath(os.path.join(
+                                                os.path.dirname(__file__),
+                                                "tools",
+                                                f"create_env.{ext}"))
     if not os.path.exists(create_env_script_path):
         raise RuntimeError(
             f"Expected create_env script here {create_env_script_path}")
