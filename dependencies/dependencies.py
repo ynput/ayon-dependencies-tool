@@ -167,6 +167,9 @@ def merge_tomls(main_toml, addon_toml, addon_name):
             else:
                 resolved_vers = dep_version
 
+            if dependency == "python":
+                resolved_vers = "3.9.*"
+
             if str(resolved_vers) == "<empty>":
                 raise ValueError(f"Version {dep_version} cannot be resolved against {main_version} for {addon_name}")  # noqa
 
@@ -575,15 +578,14 @@ if __name__ == "__main__":
     parser.add_argument("--main-toml-path",
                         help="Path to universal toml with basic dependencies")
 
-    print(sys.argv[1:])
     kwargs = parser.parse_args(sys.argv[1:]).__dict__
-    print(kwargs)
 
+    toml_path = os.path.abspath("tests\\resources\\pyproject_clean.toml")
     kwargs = {
         "server_url": "https://ayon.dev",
-
+        "api_key": "6605361c1e3e42db993a44146052847a",
         #'main_toml_path': 'C:\\Users\\petrk\\PycharmProjects\\Pype3.0\\pype\\pyproject.toml'
-        "main_toml_path": "C:\\Users\\petrk\\PycharmProjects\\Pype3.0\\openpypev4-dependencies-tool\\dependencies\\tests\\resources\\pyproject_clean.toml"
+        "main_toml_path": toml_path
     }
 
     main(**kwargs)
