@@ -104,11 +104,9 @@ def get_production_addons(server_endpoint):
     return production_addons
 
 
-def get_addon_tomls(server_url):
+def get_addon_tomls():
     """Provides list of dict containing addon tomls.
 
-    Args:
-        server_url (str): host name with port, without endpoint
     Returns:
         (dict) of (dict)
     """
@@ -167,13 +165,12 @@ def merge_tomls(main_toml, addon_toml, addon_name):
                 main_version = main_poetry[dependency]
                 resolved_vers = _get_correct_version(main_version, dep_version)
             else:
-                resolved_vers = str(dep_version)
+                resolved_vers = dep_version
 
             if str(resolved_vers) == "<empty>":
-                resolved_vers = ">=3.9.1" # TEMP
-                #raise ValueError(f"Version {dep_version} cannot be resolved against {main_version} for {addon_name}")  # noqa
+                raise ValueError(f"Version {dep_version} cannot be resolved against {main_version} for {addon_name}")  # noqa
 
-            main_poetry[dependency] = resolved_vers
+            main_poetry[dependency] = str(resolved_vers)
 
         main_toml["tool"]["poetry"][key] = main_poetry
 
@@ -404,21 +401,6 @@ def zip_venv(venv_folder, zip_destination_path):
                     zipf.write(path, zip_path)
 
 
-def upload_zip_venv(zip_path, server_endpoint, session):
-    """Uploads zipped venv to the server for distribution.
-
-    Args:
-        zip_path (str): local path to zipped venv
-        server_endpoint (str)
-        session (requests.Session)
-    """
-    if not os.path.exists(zip_path):
-        raise RuntimeError(f"{zip_path} doesn't exist")
-
-    with open(zip_path, "rb") as fp:
-        r = session.post(server_endpoint, data=fp)
-
-
 # TODO copy from openpype.lib.execute, could be imported directly??
 def run_subprocess(*args, **kwargs):
     """Convenience method for getting output errors for subprocess.
@@ -464,9 +446,13 @@ def run_subprocess(*args, **kwargs):
     _stderr = proc.stderr
 
     while proc.poll() is None:
-        line = proc.stdout.readline()
-        sys.stdout.write(str(line)+"\n")
+        line = str(proc.stdout.readline())
+        sys.stdout.write(line+"\n")
         sys.stdout.flush()
+        if "version solving failed" in line:  # tempo, shouldnt be necessary
+            proc.kill()
+            proc.returncode = 1
+            break
 
     if proc.returncode != 0:
         exc_msg = "Executing arguments was not successful: \"{}\"".format(args)
@@ -493,32 +479,50 @@ def main(server_url, api_key, main_toml_path):
     Args:
         server_url (string): hostname + port for v4 Server
             default value is http://localhost:5000
+        api_key (str): generated api key for service account
+        main_toml_path (str): locally assessible path to `pyproject.toml`
+            bundled with Ayon Desktop
     """
-    print("In Main")
-    tmpdir = tempfile.mkdtemp()
+    os.environ["AYON_SERVER_URL"] = server_url
+    os.environ["AYON_API_KEY"] = api_key
 
     base_toml_data = FileTomlProvider(main_toml_path).get_toml()
 
-    addon_tomls = get_addon_tomls(server_url)
+    addon_tomls = get_addon_tomls()
     full_toml_data = get_full_toml(base_toml_data, addon_tomls)
+
+    # create resolved venv based on distributed venv with Desktop + activated
+    # addons
+    tmpdir = tempfile.mkdtemp()
     print(f"pPreparing new venv in {tmpdir}")
     return_code = prepare_new_venv(full_toml_data, tmpdir)
 
     if return_code != 0:
-        raise RuntimeError("Preparation of venv failed!")
+        raise RuntimeError(f"Preparation of {tmpdir} failed!")
+    addons_venv_path = os.path.join(tmpdir, ".venv")
 
-    # venv should be complete
-    # base_venv_path = os.path.join(OPENPYPE_ROOT_FOLDER, ".venv")
-    #addon_venv_path = os.path.join(tmpdir, ".venv")
+    # create base venv - distributed with Desktop
+    base_venv_path = os.path.join(tmpdir, ".base_venv")
+    os.makedirs(base_venv_path)
+    shutil.copy(main_toml_path, base_venv_path)
+    print(f"pPreparing new base venv in {base_venv_path}")
+    return_code = prepare_new_venv(base_toml_data, base_venv_path)
 
-    # remove_existing_from_venv(base_venv_path, addon_venv_path)
+    if return_code != 0:
+        raise RuntimeError(f"Preparation of {base_venv_path} failed!")
+    base_venv_path = os.path.join(base_venv_path, ".venv")
+
+    # remove already distributed libraries from addons specific venv
+    remove_existing_from_venv(base_venv_path,
+                              addons_venv_path)
+
     zip_file_name = get_venv_zip_name(os.path.join(tmpdir, "poetry.lock"))
     venv_zip_path = os.path.join(tmpdir, zip_file_name)
     print(f"pZipping new venv to {venv_zip_path}")
     zip_venv(os.path.join(tmpdir, ".venv"),
              venv_zip_path)
 
-    upload_to_server(server_url, venv_zip_path)
+    upload_to_server(venv_zip_path)
 
     shutil.rmtree(tmpdir)
 
@@ -534,28 +538,14 @@ def calculate_hash(file_url):
     return checksum.hexdigest()
 
 
-def upload_to_server(server_url, venv_zip_path, user, password):
+def upload_to_server(venv_zip_path):
     """Creates and uploads package on the server
     Args:
-        server_url (str)
         venv_zip_path (str): local path to zipped venv
-        user (str)
-        password (str)
     Raises:
           (RuntimeError)
     """
-    token = login(server_url, user, password)
-    if not token:
-        raise RuntimeError("Cannot login to server")
-
-    session = requests.Session()
-    session.headers.update({
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}"
-    })
-
     server_endpoint = "addons?details=1"
-
     supported_addons = {}
     for name in get_production_addons(server_endpoint).keys():
         splitted = name.split("_")
@@ -564,56 +554,13 @@ def upload_to_server(server_url, venv_zip_path, user, password):
     platform_name = platform.system().lower()
     package_name = os.path.splitext(os.path.basename(venv_zip_path))[0]
     checksum = calculate_hash(venv_zip_path)
-    data = {"name": package_name,
-            "platform": platform_name,
-            "size": os.stat(venv_zip_path).st_size,
-            "checksum": str(checksum),
-            "supportedAddons": supported_addons}
+    ayon_api.update_dependency_info(package_name, platform_name,
+                                    os.stat(venv_zip_path).st_size,
+                                    str(checksum),
+                                    supported_addons=supported_addons)
 
-    # TODO
-    server_endpoint = "dependencies"
-    response = session.put(server_endpoint, data=json.dumps(data))
-    if response.status_code != 201:
-        raise RuntimeError("Cannot store package metadata on server")
-
-    server_endpoint = f"{server_endpoint}/{package_name}/{platform_name}"
-    session.headers.update({
-        "Content-Type": "application/octet-stream"
-    })
-    upload_zip_venv(venv_zip_path, server_endpoint, session)
-
-
-def login(url, username, password):
-    """Use login to the server to receive token.
-
-    Args:
-        url (str): Server url.
-        username (str): User's username.
-        password (str): User's password.
-
-    Returns:
-        Union[str, None]: User's token if login was successful.
-            Otherwise 'None'.
-    """
-
-    headers = {"Content-Type": "application/json"}
-    response = requests.post(
-        "{}/api/auth/login".format(url),
-        headers=headers,
-        json={
-            "name": username,
-            "password": password
-        },
-        timeout=5
-    )
-    token = None
-    # 200 - success
-    # 401 - invalid credentials
-    # *   - other issues
-    if response.status_code == 200:
-        token = response.json()["token"]
-
-    return token
+    ayon_api.upload_dependency_package(venv_zip_path, package_name,
+                                       platform_name)
 
 
 if __name__ == "__main__":
@@ -636,8 +583,5 @@ if __name__ == "__main__":
         #'main_toml_path': 'C:\\Users\\petrk\\PycharmProjects\\Pype3.0\\pype\\pyproject.toml'
         "main_toml_path": "C:\\Users\\petrk\\PycharmProjects\\Pype3.0\\openpypev4-dependencies-tool\\dependencies\\tests\\resources\\pyproject_clean.toml"
     }
-    os.environ["AYON_SERVER_URL"] = kwargs["server_url"]
-    os.environ["AYON_API_KEY"] = kwargs["api_key"]
 
     main(**kwargs)
-
