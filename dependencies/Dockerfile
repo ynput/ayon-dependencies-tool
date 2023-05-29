@@ -7,10 +7,13 @@ RUN python3 -m ensurepip
 RUN pip3 install --no-cache --upgrade pip setuptools poetry && ln -sf pip3 /usr/bin/pip
 
 RUN mkdir /service
+COPY .env /service/.env
+COPY start.ps1 /service/star.ps1
 COPY pyproject.toml /service/pyproject.toml
 COPY dependencies.py /service/dependencies.py
 COPY services/listener.py /service/listener.py
 COPY services/__init__.py /service/__init__.py
+COPY tools/ /service/tools/
 WORKDIR /service
 RUN cat pyproject.toml
 
@@ -27,5 +30,5 @@ RUN chmod 777 -R /service
 # Tell docker that all future commands should run as the appuser user
 USER ayonuser
 
-#CMD ["python", "dependencies.py", "--server-url", "https://ayon.dev", "--user", "petr.kalis.9663", "--password", "QzaHJ46zUcoCxIo3NxlW."]
-CMD ["python", "dependencies.py"]
+CMD ["powershell", "start.ps1", "--install"]
+CMD ["powershell", "start.ps1", "--listen"]
