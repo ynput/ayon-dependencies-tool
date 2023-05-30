@@ -3,7 +3,6 @@ import sys
 import time
 import signal
 import platform
-from typing import Callable, Union
 
 import ayon_api
 from nxtools import logging
@@ -12,25 +11,24 @@ from dependencies import main
 
 
 class DependenciesToolListener:
-    def __init__(self, func: Union[Callable, None] = None):
-        """ Ensure both Ayon and Shotgrid connections are available.
+    def __init__(self):
+        """ Listener on "dependencies.start_create.{platform_name}" topic.
 
-        Set up common needed attributes and handle shotgrid connection
-        closure via signal handlers.
+        This topic should contain events triggered by Dependency addon by
+        admin to start full creation of dependency package.
 
-        Args:
-            func (Callable, None): In case we want to override the default
-                function we cast to the processed events.
+        After consuming event from `start_create` topic new event is created on
+        "dependencies.creating_package.{platform_name}" to follow creation job.
+
+        There might be multiple processing workers, each for specific OS. Each
+        is automatically listening on separate topic.
+
+        It is responsibility of server (or addon) to trigger so many events on
+        so many topics as it is required.
         """
         logging.info("Initializing the Dependencies Tool Listener.")
-        if func is None:
-            self.func = self.send_event_to_server
-        else:
-            self.func = func
 
         self.worker_id = "my_id"  # TODO get from Server
-
-        logging.debug(f"Callback method is {self.func}.")
 
         signal.signal(signal.SIGINT, self._signal_teardown_handler)
         signal.signal(signal.SIGTERM, self._signal_teardown_handler)
@@ -40,16 +38,13 @@ class DependenciesToolListener:
         logging.warning("Termination finished.")
         sys.exit(0)
 
-    def send_event_to_server(self):
-        pass
-
     def start_listening(self):
         """ Main loop querying the AYON event loop
         """
         logging.info("Start listening for Ayon Events...")
 
-        source_topic = "dependencies.start_create"
         platform_name = platform.system().lower()
+        source_topic = f"dependencies.start_create.{platform_name}"
         target_topic = f"dependencies.creating_package.{platform_name}"
 
         while True:
