@@ -6,7 +6,7 @@ param (
     [string]$maintomlpath
 )
 
-$poetry_verbosity="-vvv"
+$poetry_verbosity="-vv"
 
 $current_dir = Get-Location
 $script_dir_rel = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
@@ -32,10 +32,11 @@ function Install-Poetry() {
 
 function install {
     # install dependencies for tool
-    & python -m ensurepip
-    & pip install --no-cache --upgrade pip setuptools poetry
-    & poetry config virtualenvs.in-project true
-    & poetry install --no-interaction --no-ansi $poetry_verbosity
+    Install-Poetry
+    Set-Location "$($script_dir)"
+    & "$($script_dir)\.poetry\bin\poetry" config virtualenvs.in-project true --local
+    & "$($script_dir)\.poetry\bin\poetry" config virtualenvs.create true --local
+    & "$($script_dir)\.poetry\bin\poetry" install --no-interaction --no-ansi $poetry_verbosity
 }
 
 function run_listener {
