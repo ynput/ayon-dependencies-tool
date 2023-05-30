@@ -1,29 +1,5 @@
 #!/usr/bin/env bash
 
-# This script will detect Python installation, create venv with Poetry
-# and install all necessary packages from `poetry.lock` or `pyproject.toml`
-# needed by OpenPype to be included during application freeze on unix.
-
-art () {
-  cat <<-EOF
-
-             . .   ..     .    ..
-        _oOOP3OPP3Op_. .
-     .PPpo~·   ··   ~2p.  ··  ····  ·  ·
-    ·Ppo · .pPO3Op.· · O:· · · ·
-   .3Pp · oP3'· 'P33· · 4 ··   ·  ·   · ·· ·  ·  ·
-  ·~OP    3PO·  .Op3    : · ··  _____  _____  _____
-  ·P3O  · oP3oP3O3P' · · ·   · /    /·/    /·/    /
-   O3:·   O3p~ ·       ·:· · ·/____/·/____/ /____/
-   'P ·   3p3·  oP3~· ·.P:· ·  · ··  ·   · ·· ·  ·  ·
-  · ':  · Po'  ·Opo'· .3O· .  o[ by Pype Club ]]]==- - - ·  ·
-    · '_ ..  ·    . _OP3··  ·  ·https://openpype.io·· ·
-         ~P3·OPPPO3OP~ · ··  ·
-           ·  ' '· ·  ·· · · · ··  ·
-
-EOF
-}
-
 # Colors for terminal
 
 RST='\033[0m'             # Text Reset
@@ -65,6 +41,9 @@ while :; do
     --verbose)
       poetry_verbosity="-vvv"
       ;;
+    --venv_path)
+      venv_path=$2
+      ;;
     --)
       shift
       break
@@ -75,44 +54,6 @@ while :; do
   shift
 done
 
-
-##############################################################################
-# Detect required version of python
-# Globals:
-#   colors
-#   PYTHON
-# Arguments:
-#   None
-# Returns:
-#   None
-###############################################################################
-detect_python () {
-  echo -e "${BIGreen}>>>${RST} Using python \c"
-  command -v python >/dev/null 2>&1 || { echo -e "${BIRed}- NOT FOUND${RST} ${BIYellow}You need Python 3.9 installed to continue.${RST}"; return 1; }
-  local version_command="import sys;print('{0}.{1}'.format(sys.version_info[0], sys.version_info[1]))"
-  local python_version="$(python <<< ${version_command})"
-  oIFS="$IFS"
-  IFS=.
-  set -- $python_version
-  IFS="$oIFS"
-  if [ "$1" -ge "3" ] && [ "$2" -ge "9" ] ; then
-    if [ "$2" -gt "9" ] ; then
-      echo -e "${BIWhite}[${RST} ${BIRed}$1.$2 ${BIWhite}]${RST} - ${BIRed}FAILED${RST} ${BIYellow}Version is new and unsupported, use${RST} ${BIPurple}3.9.x${RST}"; return 1;
-    else
-      echo -e "${BIWhite}[${RST} ${BIGreen}$1.$2${RST} ${BIWhite}]${RST}"
-    fi
-  else
-    command -v python >/dev/null 2>&1 || { echo -e "${BIRed}$1.$2$ - ${BIRed}FAILED${RST} ${BIYellow}Version is old and unsupported${RST}"; return 1; }
-  fi
-}
-
-install_poetry () {
-  echo -e "${BIGreen}>>>${RST} Installing Poetry ..."
-  export POETRY_HOME="$openpype_root/.poetry"
-  export POETRY_VERSION="1.3.2"
-  command -v curl >/dev/null 2>&1 || { echo -e "${BIRed}!!!${RST}${BIYellow} Missing ${RST}${BIBlue}curl${BIYellow} command.${RST}"; return 1; }
-  curl -sSL https://install.python-poetry.org/ | python -
-}
 
 ##############################################################################
 # Clean pyc files in specified directory
@@ -151,7 +92,6 @@ main () {
     art
     echo -e "${RST}"
   fi
-  detect_python || return 1
 
   # Directories
   openpype_root=$(realpath $(dirname $(dirname "${BASH_SOURCE[0]}")))
@@ -171,11 +111,11 @@ main () {
     install_poetry || { echo -e "${BIRed}!!!${RST} Poetry installation failed"; return 1; }
   fi
 
-  if [ -f "$openpype_root/poetry.lock" ]; then
-    echo -e "${BIGreen}>>>${RST} Updating dependencies ..."
-  else
-    echo -e "${BIGreen}>>>${RST} Installing dependencies ..."
-  fi
+   "$POETRY_HOME/bin/poetry" run python -m venv $venv_path
+   export VIRTUAL_ENV=$venv_path
+
+   cd $venv_path
+   "$POETRY_HOME/bin/poetry" config virtualenvs.create false
 
   "$POETRY_HOME/bin/poetry" install --no-root $poetry_verbosity || { echo -e "${BIRed}!!!${RST} Poetry environment installation failed"; return 1; }
   if [ $? -ne 0 ] ; then
@@ -185,17 +125,6 @@ main () {
 
   echo -e "${BIGreen}>>>${RST} Cleaning cache files ..."
   clean_pyc
-
-  # reinstall these because of bug in poetry? or cx_freeze?
-  # cx_freeze will crash on missing __pychache__ on these but
-  # reinstalling them solves the problem.
-  echo -e "${BIGreen}>>>${RST} Post-venv creation fixes ..."
-  local openpype_index=$("$POETRY_HOME/bin/poetry" run python "$openpype_root/tools/parse_pyproject.py" tool.poetry.source.0.url)
-  echo -e "${BIGreen}-   ${RST} Using index: ${BIWhite}$openpype_index${RST}"
-  "$POETRY_HOME/bin/poetry" run python -m pip install --disable-pip-version-check --force-reinstall pip
-  echo -e "${BIGreen}>>>${RST} Installing pre-commit hooks ..."
-  "$POETRY_HOME/bin/poetry" run pre-commit install
-}
 
 return_code=0
 main || return_code=$?
