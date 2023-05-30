@@ -40,7 +40,7 @@ function install {
 }
 
 function run_listener {
-  & python "$($script_dir)\services\listener.py"
+  & "$($script_dir)\.venv\Scripts\python" "$($script_dir)\services\listener.py"
 }
 
 function set_env {
