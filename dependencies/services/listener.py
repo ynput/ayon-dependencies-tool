@@ -3,7 +3,7 @@ import sys
 import time
 import signal
 import platform
-from typing import Any, Callable, Union
+from typing import Callable, Union
 
 import ayon_api
 from nxtools import logging
@@ -56,31 +56,42 @@ class DependenciesToolListener:
             event = ayon_api.enroll_event_job(source_topic,
                                               target_topic,
                                               self.worker_id,
-                                              "Create new dependency package",
+                                              "Creating dependency package",
                                               False)
             if event:
                 logging.info("typ::{}".format(event))
                 src_job = ayon_api.get_event(event["dependsOn"])
-                result = self.process_create_dependency()
-
-                status = "failure" if result == 1 else "finished"
+                try:
+                    package_name = self.process_create_dependency()
+                    description = f"{package_name} created"
+                    status = "finished"
+                except Exception as e:
+                    status = "failed"
+                    description = f"Creation of package failed \n {str(e)}"
 
                 ayon_api.update_event(
                     event["id"],
                     sender=self.worker_id,
                     status=status,
-                    description="New finished description",
+                    description=description,
                 )
 
             time.sleep(2)
 
     def process_create_dependency(self):
+        """Calls full creation dependency package process
+
+        Expects env vars:
+            AYON_SERVER_URL
+            AYON_API_KEY
+
+        Returns:
+            (str): created package name
+        """
         try:
-            main(os.environ["AYON_SERVER_URL"],
-                 os.environ["AYON_API_KEY"],
-                 "C:\\Users\\pypeclub\\Documents\\ayon\\openpypev4-dependencies-tool\\dependencies\\tests\\resources\\pyproject_clean.toml")
+            package_name = main(os.environ["AYON_SERVER_URL"],
+                                os.environ["AYON_API_KEY"],
+                                "..\\tests\\resources\\pyproject_clean.toml")
+            return package_name
         except:
             raise
-
-        return 0
-
