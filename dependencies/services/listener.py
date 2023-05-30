@@ -2,27 +2,13 @@ import os
 import sys
 import time
 import signal
-import socket
+import platform
 from typing import Any, Callable, Union
 
 import ayon_api
 from nxtools import logging
 
-
-EVENT_TYPES = [
-    "Shotgun_{0}_New",  # a new entity was created.
-    "Shotgun_{0}_Change",  # an entity was modified.
-    "Shotgun_{0}_Retirement",  # an entity was deleted.
-    "Shotgun_{0}_Revival",  # an entity was revived.
-]
-
-# To be revised once we usin links
-IGNORE_ATTRIBUTE_NAMES = [
-    "assets",
-    "parent_shots",
-    "retirement_date",
-    "shots"
-]
+from dependencies import main
 
 
 class DependenciesToolListener:
@@ -42,6 +28,8 @@ class DependenciesToolListener:
         else:
             self.func = func
 
+        self.worker_id = "my_id"  # TODO get from Server
+
         logging.debug(f"Callback method is {self.func}.")
 
         signal.signal(signal.SIGINT, self._signal_teardown_handler)
@@ -60,16 +48,39 @@ class DependenciesToolListener:
         """
         logging.info("Start listening for Ayon Events...")
 
-        filters = None
-        last_event_id = "459ba8a4f8bc11edaa2f0242c0a89005"
-        filters = [
-            ["id", "greater_than", last_event_id]
-        ]
+        source_topic = "dependencies.start_create"
+        platform_name = platform.system().lower()
+        target_topic = f"dependencies.creating_package.{platform_name}"
 
         while True:
-            events = ayon_api.get_events(["log.error"])
-            logging.info("typ::{}".format(events))
-            logging.info("events::{}".format(list(events)))
+            event = ayon_api.enroll_event_job(source_topic,
+                                              target_topic,
+                                              self.worker_id,
+                                              "Create new dependency package",
+                                              False)
+            if event:
+                logging.info("typ::{}".format(event))
+                src_job = ayon_api.get_event(event["dependsOn"])
+                result = self.process_create_dependency()
+
+                status = "failure" if result == 1 else "finished"
+
+                ayon_api.update_event(
+                    event["id"],
+                    sender=self.worker_id,
+                    status=status,
+                    description="New finished description",
+                )
 
             time.sleep(2)
+
+    def process_create_dependency(self):
+        try:
+            main(os.environ["AYON_SERVER_URL"],
+                 os.environ["AYON_API_KEY"],
+                 "C:\\Users\\pypeclub\\Documents\\ayon\\openpypev4-dependencies-tool\\dependencies\\tests\\resources\\pyproject_clean.toml")
+        except:
+            raise
+
+        return 0
 
