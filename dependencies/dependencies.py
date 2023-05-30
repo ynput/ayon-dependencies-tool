@@ -1,23 +1,21 @@
 import os
 import shutil
 import tempfile
-
-import ayon_api
 import toml
 import abc
 import six
 from packaging import version
 import subprocess
 import platform
-import requests
 import sys
 import sysconfig
 import hashlib
 import logging
-import json
 import argparse
 from poetry.core.constraints.version import parse_constraint
 import zipfile
+
+import ayon_api
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -527,9 +525,11 @@ def main(server_url, api_key, main_toml_path):
     zip_venv(os.path.join(tmpdir, ".venv"),
              venv_zip_path)
 
-    upload_to_server(venv_zip_path)
+    package_name = upload_to_server(venv_zip_path)
 
     shutil.rmtree(tmpdir)
+
+    return package_name
 
 
 def calculate_hash(file_url):
@@ -547,6 +547,8 @@ def upload_to_server(venv_zip_path):
     """Creates and uploads package on the server
     Args:
         venv_zip_path (str): local path to zipped venv
+    Returns:
+        (str): package name for logging
     Raises:
           (RuntimeError)
     """
@@ -566,6 +568,8 @@ def upload_to_server(venv_zip_path):
 
     ayon_api.upload_dependency_package(venv_zip_path, package_name,
                                        platform_name)
+
+    return package_name
 
 
 if __name__ == "__main__":
