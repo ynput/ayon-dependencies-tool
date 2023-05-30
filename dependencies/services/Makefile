@@ -18,7 +18,7 @@ dev:
 		--attach=stdout \
 		--attach=stderr \
 		--network=host \
-		$(image) python -m dependencies
+		$(image) python -m services.listener
 
 
 
