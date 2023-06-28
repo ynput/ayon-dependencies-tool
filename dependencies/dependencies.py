@@ -14,6 +14,8 @@ import logging
 import argparse
 from poetry.core.constraints.version import parse_constraint
 import zipfile
+import attr
+from typing import Dict, List
 
 import ayon_api
 
@@ -73,33 +75,80 @@ class ServerTomlProvider(AbstractTomlProvider):
     def get_tomls(self):
         tomls = {}
 
-        for addon_name, addon in get_production_addons(self.server_endpoint).items():
-            if not addon.get("clientPyproject"):
-                continue
-            tomls[addon_name] = addon["clientPyproject"]
+        con = ayon_api.create_connection()
+
+        response = con.get(self.server_endpoint)
+
+        for addon_dict in response.data["addons"]:
+            addon = Addon(**addon_dict)
+            for version_name, addon_version_dict in addon.versions.items():
+                addon_version = AddonVersion(**addon_version_dict)
+                if not addon_version.clientPyproject:
+                    continue
+                addon_version.name = version_name
+                addon_version.full_name = f"{addon.name}_{version_name}"
+                tomls[addon_version.full_name] = addon_version.clientPyproject
 
         return tomls
 
 
-def get_production_addons(server_endpoint):
-    """Returns dict of dicts with addon info.
+@attr.s
+class Bundle:
+    name: str = attr.ib()
+    createdAt: str = attr.ib()
+    installerVersion: str = attr.ib()
+    isProduction: bool = attr.ib()
+    isStaging: bool = attr.ib()
+    addons: Dict[str, str] = attr.ib()
+    dependencyPackages: Dict[str, str] = attr.ib()
 
-    Dict keys are names of production addons (example_1.0.0)
+
+@attr.s
+class Addon:
+    name: str = attr.ib()
+    title: str = attr.ib()
+    description: str = attr.ib()
+    productionVersion: bool = attr.ib(default=None)  # TODO
+    stagingVersion: bool = attr.ib(default=None)
+    versions: Dict[str, str] = attr.ib(default={})
+
+
+@attr.s
+class AddonVersion:
+    hasSettings: bool = attr.ib()
+    hasSiteSettings: bool = attr.ib()
+    frontendScopes: Dict[str, str] = attr.ib()
+    name: str = attr.ib(default=None)
+    full_name: str = attr.ib(default=None)
+    clientPyproject: Dict[str, str] = attr.ib(default={})
+    clientSourceInfo: List[str] = attr.ib(default=[])
+    services: List[str] = attr.ib(default=[])
+
+
+def get_bundles():
+    """Provides dictionary with available bundles
+
+    Returns:
+        (dict) of (Bundle) {"BUNDLE_NAME": Bundle}
     """
+    server_endpoint = "desktop/bundles"
     con = ayon_api.create_connection()
 
     response = con.get(server_endpoint)
 
-    production_addons = {}
-    for addon in response.data["addons"]:
-        production_version = addon.get("productionVersion")
-        if not production_version:
-            continue
-        addon_ver = addon["versions"][production_version]
-        addon_name = f"{addon['name']}_{production_version}"
-        production_addons[addon_name] = addon_ver
+    bundles_by_name = {}
+    for bundle_dict in response.data["bundles"]:
+        bundle = Bundle(**bundle_dict)
+        bundles_by_name[bundle.name] = bundle
+    return bundles_by_name
 
-    return production_addons
+
+def get_bundle_addons(bundle_name):
+    """Returns dict of dicts with addon info.
+
+    Dict keys are names of production addons (example_1.0.0)
+    """
+    return get_bundles()[bundle_name]
 
 
 def get_addon_tomls():
@@ -470,7 +519,7 @@ def run_subprocess(*args, **kwargs):
     return proc.returncode
 
 
-def main(server_url, api_key, main_toml_path):
+def main(server_url, api_key, main_toml_path, bundle_name):
     """Main endpoint to trigger full process.
 
     Pulls all active addons info from server, provides their pyproject.toml
@@ -489,10 +538,24 @@ def main(server_url, api_key, main_toml_path):
     os.environ["AYON_SERVER_URL"] = server_url
     os.environ["AYON_API_KEY"] = api_key
 
-    base_toml_data = FileTomlProvider(main_toml_path).get_toml()
+    bundles_by_name = get_bundles()
 
+    bundle = bundles_by_name.get(bundle_name)
+    if not bundle:
+        raise ValueError(f"{bundle_name} not present on the server.")
+
+    bundle_addons = [f"{key}_{value}"
+                     for key, value in bundle.addons.items()
+                     if value is not None]
     addon_tomls = get_addon_tomls()
-    full_toml_data = get_full_toml(base_toml_data, addon_tomls)
+
+    bundle_addons_toml = {}
+    for addon_full_name, toml in addon_tomls.items():
+        if addon_full_name in bundle_addons:
+            bundle_addons_toml[addon_full_name] = toml
+
+    base_toml_data = FileTomlProvider(main_toml_path).get_toml()
+    full_toml_data = get_full_toml(base_toml_data, bundle_addons_toml)
 
     # create resolved venv based on distributed venv with Desktop + activated
     # addons
@@ -519,17 +582,31 @@ def main(server_url, api_key, main_toml_path):
     remove_existing_from_venv(base_venv_path,
                               addons_venv_path)
 
-    zip_file_name = get_venv_zip_name(os.path.join(tmpdir, "poetry.lock"))
+    lock_path = os.path.join(tmpdir, "poetry.lock")
+    zip_file_name = get_venv_zip_name(lock_path)
     venv_zip_path = os.path.join(tmpdir, zip_file_name)
     print(f"pZipping new venv to {venv_zip_path}")
     zip_venv(os.path.join(tmpdir, ".venv"),
              venv_zip_path)
 
-    package_name = upload_to_server(venv_zip_path)
+    python_modules = get_python_modules(lock_path)
+    package_name = upload_to_server(venv_zip_path,
+                                    python_modules=python_modules)
 
     shutil.rmtree(tmpdir)
 
     return package_name
+
+
+def get_python_modules(lock_path):
+    with open(lock_path, 'r') as f:
+        lockfile = toml.loads(f.read())
+
+    packages = {}
+    for package in lockfile['package']:
+        packages[package['name']] = package['version']
+
+    return packages
 
 
 def calculate_hash(file_url):
@@ -554,17 +631,25 @@ def upload_to_server(venv_zip_path):
     """
     server_endpoint = "addons?details=1"
     supported_addons = {}
-    for name in get_production_addons(server_endpoint).keys():
+    for name in get_bundle_addons(server_endpoint).keys():
         splitted = name.split("_")
         supported_addons[splitted[0]] = splitted[1]
 
     platform_name = platform.system().lower()
     package_name = os.path.splitext(os.path.basename(venv_zip_path))[0]
     checksum = calculate_hash(venv_zip_path)
-    ayon_api.update_dependency_info(package_name, platform_name,
-                                    os.stat(venv_zip_path).st_size,
-                                    str(checksum),
-                                    supported_addons=supported_addons)
+
+    ayon_api.create_dependency_package(
+        filename=package_name,
+        python_modules=TODO,
+        source_addons=TODO,
+        installer_version=TODO,
+        checksum=str(checksum),
+        checksum_algorithm="md5",
+        file_size=os.stat(venv_zip_path).st_size,
+        sources=None,
+        platform_name=platform_name,
+    )
 
     ayon_api.upload_dependency_package(venv_zip_path, package_name,
                                        platform_name)
@@ -581,15 +666,24 @@ if __name__ == "__main__":
                         help="Api key")
     parser.add_argument("--main-toml-path",
                         help="Path to universal toml with basic dependencies")
+    parser.add_argument("--bundle-name",
+                        help="Bundle name for which dep package is created")
 
     kwargs = parser.parse_args(sys.argv[1:]).__dict__
 
+    # << for development only
     toml_path = os.path.abspath("tests\\resources\\pyproject_clean.toml")
     kwargs = {
-        "server_url": "https://ayon.dev",
-        "api_key": "6605361c1e3e42db993a44146052847a",
         #'main_toml_path': 'C:\\Users\\petrk\\PycharmProjects\\Pype3.0\\pype\\pyproject.toml'
         "main_toml_path": toml_path
     }
+    with open(".env") as fp:
+        for line in fp:
+            if not line:
+                continue
+            key, value = line.split("=")
+            kwargs[key.replace("AYON_", "").strip().lower()] = value.strip().lower()
+    kwargs["bundle_name"] = "JustCore"
+    # for development only >>
 
     main(**kwargs)
