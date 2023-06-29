@@ -131,13 +131,8 @@ def get_bundles():
     Returns:
         (dict) of (Bundle) {"BUNDLE_NAME": Bundle}
     """
-    server_endpoint = "desktop/bundles"
-    con = ayon_api.create_connection()
-
-    response = con.get(server_endpoint)
-
     bundles_by_name = {}
-    for bundle_dict in response.data["bundles"]:
+    for bundle_dict in ayon_api.get_bundles()["bundles"]:
         bundle = Bundle(**bundle_dict)
         bundles_by_name[bundle.name] = bundle
     return bundles_by_name
