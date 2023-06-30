@@ -1,4 +1,5 @@
 import os
+import datetime
 import shutil
 import tempfile
 import toml
@@ -8,7 +9,6 @@ from packaging import version
 import subprocess
 import platform
 import sys
-import sysconfig
 import hashlib
 import logging
 import argparse
@@ -100,7 +100,7 @@ class Bundle:
     isProduction: bool = attr.ib()
     isStaging: bool = attr.ib()
     addons: Dict[str, str] = attr.ib()
-    dependencyPackages: Dict[str, str] = attr.ib()
+    dependencyPackages: Dict[str, str] = attr.ib(default={})
 
 
 @attr.s
@@ -138,15 +138,7 @@ def get_bundles():
     return bundles_by_name
 
 
-def get_bundle_addons(bundle_name):
-    """Returns dict of dicts with addon info.
-
-    Dict keys are names of production addons (example_1.0.0)
-    """
-    return get_bundles()[bundle_name]
-
-
-def get_addon_tomls():
+def get_all_addon_tomls():
     """Provides list of dict containing addon tomls.
 
     Returns:
@@ -342,30 +334,6 @@ def prepare_new_venv(full_toml_data, venv_folder):
     return run_subprocess(cmd_args)
 
 
-def get_venv_zip_name(lock_file_path):
-    """Creates zip file name for new venv.
-
-    File name contains python version used when generating venv, platform and
-    hash of installed libraries from .lock file
-
-    Args:
-        lock_file_path (str)
-    Returns:
-        (str):
-        example 'openpype-win-amd64-python3.7.9-d64f07e555c5dd65034c9186192869e78b08390d.zip'  # noqa
-        File name is far below max file name size limit so far, so no need to
-        some clever trimming for now
-    """
-    ver = sys.version_info
-    platform = sysconfig.get_platform()
-    python_version = "python{}.{}.{}".format(ver.major, ver.minor, ver.micro)
-
-    with open(lock_file_path) as fp:
-        hash = hashlib.sha1(fp.read().encode('utf-8')).hexdigest()
-
-    return "openpype-{}-{}-{}.zip".format(platform, python_version, hash)
-
-
 def lock_to_toml_data(lock_path):
     """Create toml file with explicit version from lock file.
 
@@ -448,149 +416,67 @@ def zip_venv(venv_folder, zip_destination_path):
                     zipf.write(path, zip_path)
 
 
-# TODO copy from openpype.lib.execute, could be imported directly??
-def run_subprocess(*args, **kwargs):
-    """Convenience method for getting output errors for subprocess.
-
-    Output logged when process finish.
-
-    Entered arguments and keyword arguments are passed to subprocess Popen.
+def prepare_zip_venv(tmpdir):
+    """Handles creation of zipped venv.
 
     Args:
-        *args: Variable length arument list passed to Popen.
-        **kwargs : Arbitrary keyword arguments passed to Popen. Is possible to
-            pass `logging.Logger` object under "logger" if want to use
-            different than lib's logger.
+        tmpdir (str): temp folder path
 
     Returns:
-        str: Full output of subprocess concatenated stdout and stderr.
-
-    Raises:
-        RuntimeError: Exception is raised if process finished with nonzero
-            return code.
+        (str) path to zipped venv
     """
+    # create_dependency_package_basename not yet part of public API
+    zip_file_name = _create_dependency_package_basename()
+    venv_zip_path = os.path.join(tmpdir, zip_file_name)
+    print(f"pZipping new venv to {venv_zip_path}")
+    zip_venv(os.path.join(tmpdir, ".venv"), venv_zip_path)
 
-    # Get environents from kwarg or use current process environments if were
-    # not passed.
-    env = kwargs.get("env") or os.environ
-    # Make sure environment contains only strings
-    filtered_env = {str(k): str(v) for k, v in env.items()}
-
-    # Use lib's logger if was not passed with kwargs.
-    logger = kwargs.pop("logger", None)
-    if logger is None:
-        logger = logging.getLogger("dependencies_tool")
-
-    # set overrides
-    kwargs['stdout'] = kwargs.get('stdout', subprocess.PIPE)
-    kwargs['stderr'] = kwargs.get('stderr', subprocess.PIPE)
-    kwargs['stdin'] = kwargs.get('stdin', subprocess.PIPE)
-    kwargs['env'] = filtered_env
-
-    proc = subprocess.Popen(*args, **kwargs)
-
-    _stdout = proc.stdout
-    _stderr = proc.stderr
-
-    while proc.poll() is None:
-        line = str(proc.stdout.readline())
-        sys.stdout.write(line+"\n")
-        sys.stdout.flush()
-        if "version solving failed" in line:  # tempo, shouldnt be necessary
-            proc.kill()
-            proc.returncode = 1
-            break
-
-    if proc.returncode != 0:
-        exc_msg = "Executing arguments was not successful: \"{}\"".format(args)
-        if _stdout:
-            exc_msg += "\n\nOutput:\n{}".format(_stdout)
-
-        if _stderr:
-            exc_msg += "Error:\n{}".format(_stderr)
-
-        raise RuntimeError(exc_msg)
-
-    return proc.returncode
+    return venv_zip_path
 
 
-def main(server_url, api_key, main_toml_path, bundle_name):
-    """Main endpoint to trigger full process.
+def create_base_venv(base_toml_data, main_toml_path, tmpdir):
+    """ create base venv - distributed with Desktop
 
-    Pulls all active addons info from server, provides their pyproject.toml
-    (if available), takes base (build) pyproject.toml, adds tomls from addons.
-    Builds new venv with dependencies only for addons (dependencies already
-    present in build are filtered out).
-    Uploads zipped venv back to server.
+    Used to filter out already installed libraries later
 
     Args:
-        server_url (string): hostname + port for v4 Server
-            default value is http://localhost:5000
-        api_key (str): generated api key for service account
-        main_toml_path (str): locally assessible path to `pyproject.toml`
-            bundled with Ayon Desktop
+        base_toml_data (dict): content of toml for Desktop app
     """
-    os.environ["AYON_SERVER_URL"] = server_url
-    os.environ["AYON_API_KEY"] = api_key
-
-    bundles_by_name = get_bundles()
-
-    bundle = bundles_by_name.get(bundle_name)
-    if not bundle:
-        raise ValueError(f"{bundle_name} not present on the server.")
-
-    bundle_addons = [f"{key}_{value}"
-                     for key, value in bundle.addons.items()
-                     if value is not None]
-    addon_tomls = get_addon_tomls()
-
-    bundle_addons_toml = {}
-    for addon_full_name, toml in addon_tomls.items():
-        if addon_full_name in bundle_addons:
-            bundle_addons_toml[addon_full_name] = toml
-
-    base_toml_data = FileTomlProvider(main_toml_path).get_toml()
-    full_toml_data = get_full_toml(base_toml_data, bundle_addons_toml)
-
-    # create resolved venv based on distributed venv with Desktop + activated
-    # addons
-    tmpdir = tempfile.mkdtemp()
-    print(f"pPreparing new venv in {tmpdir}")
-    return_code = prepare_new_venv(full_toml_data, tmpdir)
-
-    if return_code != 0:
-        raise RuntimeError(f"Preparation of {tmpdir} failed!")
-    addons_venv_path = os.path.join(tmpdir, ".venv")
-
-    # create base venv - distributed with Desktop
     base_venv_path = os.path.join(tmpdir, ".base_venv")
     os.makedirs(base_venv_path)
-    shutil.copy(main_toml_path, base_venv_path)
+    shutil.copy(main_toml_path, base_venv_path)  # ???
     print(f"pPreparing new base venv in {base_venv_path}")
     return_code = prepare_new_venv(base_toml_data, base_venv_path)
-
     if return_code != 0:
         raise RuntimeError(f"Preparation of {base_venv_path} failed!")
     base_venv_path = os.path.join(base_venv_path, ".venv")
+    return base_venv_path
 
-    # remove already distributed libraries from addons specific venv
-    remove_existing_from_venv(base_venv_path,
-                              addons_venv_path)
 
-    lock_path = os.path.join(tmpdir, "poetry.lock")
-    zip_file_name = get_venv_zip_name(lock_path)
-    venv_zip_path = os.path.join(tmpdir, zip_file_name)
-    print(f"pZipping new venv to {venv_zip_path}")
-    zip_venv(os.path.join(tmpdir, ".venv"),
-             venv_zip_path)
+def create_addons_venv(full_toml_data, tmpdir):
+    print(f"Preparing new venv in {tmpdir}")
+    return_code = prepare_new_venv(full_toml_data, tmpdir)
+    if return_code != 0:
+        raise RuntimeError(f"Preparation of {tmpdir} failed!")
+    addons_venv_path = os.path.join(tmpdir, ".venv")
+    return addons_venv_path
 
-    python_modules = get_python_modules(lock_path)
-    package_name = upload_to_server(venv_zip_path,
-                                    python_modules=python_modules)
 
-    shutil.rmtree(tmpdir)
+def get_applicable_package(new_toml):
+    """Compares existing dependency packages to find matching.
 
-    return package_name
+    One dep package could contain same versions of python dependencies for
+    different versions of addons (eg. no change in dependency, but change in
+    functionality)
+
+    """
+    for package in ayon_api.get_dependency_packages()["packages"]:
+        if _is_applicable_package(new_toml, package):
+            return package["filename"]
+
+
+def _is_applicable_package(new_toml, package):
+    return False
 
 
 def get_python_modules(lock_path):
@@ -615,20 +501,24 @@ def calculate_hash(file_url):
     return checksum.hexdigest()
 
 
-def upload_to_server(venv_zip_path):
+def upload_to_server(venv_zip_path, bundle):
     """Creates and uploads package on the server
     Args:
         venv_zip_path (str): local path to zipped venv
     Returns:
         (str): package name for logging
+        (Bundle): bundle object
     Raises:
           (RuntimeError)
     """
-    server_endpoint = "addons?details=1"
     supported_addons = {}
-    for name in get_bundle_addons(server_endpoint).keys():
-        splitted = name.split("_")
-        supported_addons[splitted[0]] = splitted[1]
+    for addon_name, addon_version in bundle.addons.items():
+        if addon_version is None:
+            continue
+        supported_addons[addon_name] = addon_version
+
+    lock_path = os.path.join(os.path.dirname(venv_zip_path), "poetry.lock")
+    python_modules = get_python_modules(lock_path)
 
     platform_name = platform.system().lower()
     package_name = os.path.splitext(os.path.basename(venv_zip_path))[0]
@@ -636,9 +526,9 @@ def upload_to_server(venv_zip_path):
 
     ayon_api.create_dependency_package(
         filename=package_name,
-        python_modules=TODO,
-        source_addons=TODO,
-        installer_version=TODO,
+        python_modules=python_modules,
+        source_addons=bundle.addons,
+        installer_version=bundle.installerVersion,
         checksum=str(checksum),
         checksum_algorithm="md5",
         file_size=os.stat(venv_zip_path).st_size,
@@ -650,6 +540,29 @@ def upload_to_server(venv_zip_path):
                                        platform_name)
 
     return package_name
+
+
+def update_bundle_with_package(bundle, package):
+    """Assign `package` to `bundle`
+
+    Args:
+        bundle (Bundle)
+        package (dict)  # TODO change type
+    """
+    print(f"Updating in {bundle.name} with {package['filename']}")
+    platform_str = platform.system().lower()
+    bundle.dependencyPackages[platform_str] = package['filename']
+    ayon_api.update_bundle(bundle.name, bundle.dependencyPackages)
+
+
+def _create_dependency_package_basename(platform_name=None):
+    if platform_name is None:
+        platform_name = platform.system().lower()
+
+    now_date = datetime.datetime.now()
+    time_stamp = now_date.strftime("%y%m%d%H%M")
+    return "ayon_{}_{}".format(time_stamp, platform_name)
+
 
 
 if __name__ == "__main__":
@@ -678,7 +591,7 @@ if __name__ == "__main__":
                 continue
             key, value = line.split("=")
             kwargs[key.replace("AYON_", "").strip().lower()] = value.strip().lower()
-    kwargs["bundle_name"] = "JustCore"
+    kwargs["bundle_name"] = "Core"
     # for development only >>
 
     main(**kwargs)
