@@ -590,6 +590,126 @@ def _create_dependency_package_basename(platform_name=None):
     return "ayon_{}_{}".format(time_stamp, platform_name)
 
 
+# TODO copy from openpype.lib.execute, could be imported directly??
+def run_subprocess(*args, **kwargs):
+    """Convenience method for getting output errors for subprocess.
+
+    Output logged when process finish.
+
+    Entered arguments and keyword arguments are passed to subprocess Popen.
+
+    Args:
+        *args: Variable length arument list passed to Popen.
+        **kwargs : Arbitrary keyword arguments passed to Popen. Is possible to
+            pass `logging.Logger` object under "logger" if want to use
+            different than lib's logger.
+
+    Returns:
+        str: Full output of subprocess concatenated stdout and stderr.
+
+    Raises:
+        RuntimeError: Exception is raised if process finished with nonzero
+            return code.
+    """
+
+    # Get environents from kwarg or use current process environments if were
+    # not passed.
+    env = kwargs.get("env") or os.environ
+    # Make sure environment contains only strings
+    filtered_env = {str(k): str(v) for k, v in env.items()}
+
+    # Use lib's logger if was not passed with kwargs.
+    logger = kwargs.pop("logger", None)
+    if logger is None:
+        logger = logging.getLogger("dependencies_tool")
+
+    # set overrides
+    kwargs['stdout'] = kwargs.get('stdout', subprocess.PIPE)
+    kwargs['stderr'] = kwargs.get('stderr', subprocess.PIPE)
+    kwargs['stdin'] = kwargs.get('stdin', subprocess.PIPE)
+    kwargs['env'] = filtered_env
+
+    proc = subprocess.Popen(*args, **kwargs)
+
+    _stdout = proc.stdout
+    _stderr = proc.stderr
+
+    while proc.poll() is None:
+        line = str(proc.stdout.readline())
+        sys.stdout.write(line+"\n")
+        sys.stdout.flush()
+        if "version solving failed" in line:  # tempo, shouldnt be necessary
+            proc.kill()
+            proc.returncode = 1
+            break
+
+    if proc.returncode != 0:
+        exc_msg = "Executing arguments was not successful: \"{}\"".format(args)
+        if _stdout:
+            exc_msg += "\n\nOutput:\n{}".format(_stdout)
+
+        if _stderr:
+            exc_msg += "Error:\n{}".format(_stderr)
+
+        raise RuntimeError(exc_msg)
+
+    return proc.returncode
+
+
+def main(server_url, api_key, main_toml_path, bundle_name):
+    """Main endpoint to trigger full process.
+
+    Pulls all active addons info from server, provides their pyproject.toml
+    (if available), takes base (build) pyproject.toml, adds tomls from addons.
+    Builds new venv with dependencies only for addons (dependencies already
+    present in build are filtered out).
+    Uploads zipped venv back to server.
+
+    Args:
+        server_url (string): hostname + port for v4 Server
+            default value is http://localhost:5000
+        api_key (str): generated api key for service account
+        main_toml_path (str): locally assessible path to `pyproject.toml`
+            bundled with Ayon Desktop
+    """
+    os.environ["AYON_SERVER_URL"] = server_url
+    os.environ["AYON_API_KEY"] = api_key
+
+    bundles_by_name = get_bundles()
+
+    bundle = bundles_by_name.get(bundle_name)
+    if not bundle:
+        raise ValueError(f"{bundle_name} not present on the server.")
+
+    bundle_addons_toml = get_bundle_addons_tomls(bundle)
+
+    base_toml_data = FileTomlProvider(main_toml_path).get_toml()
+    full_toml_data = get_full_toml(base_toml_data, bundle_addons_toml)
+
+    applicable_package_name = get_applicable_package(full_toml_data)
+    if applicable_package_name:
+        update_bundle_with_package(bundle, applicable_package_name)
+        return applicable_package_name
+
+    # create resolved venv based on distributed venv with Desktop + activated
+    # addons
+    tmpdir = tempfile.mkdtemp()
+    base_venv_path = create_base_venv(base_toml_data, main_toml_path, tmpdir)
+    addons_venv_path = create_addons_venv(full_toml_data, tmpdir)
+
+    # remove already distributed libraries from addons specific venv
+    remove_existing_from_venv(base_venv_path, addons_venv_path)
+
+    venv_zip_path = prepare_zip_venv(tmpdir)
+
+    package_name = upload_to_server(venv_zip_path, bundle)
+
+    update_bundle_with_package(bundle, package_name)
+
+    shutil.rmtree(tmpdir)
+
+    return package_name
+
 
 if __name__ == "__main__":
 
