@@ -96,10 +96,10 @@ class ServerTomlProvider(AbstractTomlProvider):
 class Bundle:
     name: str = attr.ib()
     createdAt: str = attr.ib()
-    installerVersion: str = attr.ib()
     isProduction: bool = attr.ib()
     isStaging: bool = attr.ib()
-    addons: Dict[str, str] = attr.ib()
+    installerVersion: str = attr.ib(default=None)
+    addons: Dict[str, str] = attr.ib(default={})
     dependencyPackages: Dict[str, str] = attr.ib(default={})
 
 
