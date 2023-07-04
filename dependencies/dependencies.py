@@ -469,9 +469,19 @@ def get_applicable_package(new_toml):
     different versions of addons (eg. no change in dependency, but change in
     functionality)
 
+    Args:
+        new_toml (dict): in a format of regular toml file
+    Returns:
+        (str) name of matching package
     """
+    toml_python_packages = dict(
+        sorted(new_toml["tool"]["poetry"]["dependencies"].items())
+    )
     for package in ayon_api.get_dependency_packages()["packages"]:
-        if _is_applicable_package(new_toml, package):
+        package_python_packages = dict(sorted(
+            package["pythonModules"].items())
+        )
+        if toml_python_packages == package_python_packages:
             return package["filename"]
 
 
