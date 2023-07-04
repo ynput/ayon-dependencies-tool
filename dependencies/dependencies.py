@@ -149,6 +149,24 @@ def get_all_addon_tomls():
     return ServerTomlProvider(server_endpoint).get_tomls()
 
 
+def get_bundle_addons_tomls(bundle):
+    """Query addons for `bundle` to get their python dependencies.
+
+    Returns:
+        (dict) of (dict)  {'core_1.0.0': {toml}}
+    """
+    bundle_addons = [f"{key}_{value}"
+                     for key, value in bundle.addons.items()
+                     if value is not None]
+    addon_tomls = get_all_addon_tomls()
+
+    bundle_addons_toml = {}
+    for addon_full_name, toml in addon_tomls.items():
+        if addon_full_name in bundle_addons:
+            bundle_addons_toml[addon_full_name] = toml
+    return bundle_addons_toml
+
+
 def is_valid_toml(toml):
     """Validates that 'toml' contains all required fields.
 
