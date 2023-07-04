@@ -426,7 +426,7 @@ def prepare_zip_venv(tmpdir):
         (str) path to zipped venv
     """
     # create_dependency_package_basename not yet part of public API
-    zip_file_name = _create_dependency_package_basename()
+    zip_file_name = f"{_create_dependency_package_basename()}.zip"
     venv_zip_path = os.path.join(tmpdir, zip_file_name)
     print(f"pZipping new venv to {venv_zip_path}")
     zip_venv(os.path.join(tmpdir, ".venv"), venv_zip_path)
