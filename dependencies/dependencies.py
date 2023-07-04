@@ -542,16 +542,16 @@ def upload_to_server(venv_zip_path, bundle):
     return package_name
 
 
-def update_bundle_with_package(bundle, package):
-    """Assign `package` to `bundle`
+def update_bundle_with_package(bundle, package_name):
+    """Assign `package_name` to `bundle`
 
     Args:
         bundle (Bundle)
-        package (dict)  # TODO change type
+        package_name (str)
     """
-    print(f"Updating in {bundle.name} with {package['filename']}")
+    print(f"Updating in {bundle.name} with {package_name}")
     platform_str = platform.system().lower()
-    bundle.dependencyPackages[platform_str] = package['filename']
+    bundle.dependencyPackages[platform_str] = package_name
     ayon_api.update_bundle(bundle.name, bundle.dependencyPackages)
 
 
