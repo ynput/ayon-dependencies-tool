@@ -503,17 +503,14 @@ def get_applicable_package(new_toml):
             return package["filename"]
 
 
-def _is_applicable_package(new_toml, package):
-    return False
-
-
-def get_python_modules(lock_path):
-    with open(lock_path, 'r') as f:
-        lockfile = toml.loads(f.read())
+def get_python_modules(py_project_path):
+    with open(py_project_path, 'r') as f:
+        py_project = toml.loads(f.read())
 
     packages = {}
-    for package in lockfile['package']:
-        packages[package['name']] = package['version']
+    dependencies = py_project["tool"]["poetry"]["dependencies"]
+    for package_name, package_version in dependencies.items():
+        packages[package_name] = package_version
 
     return packages
 
@@ -545,8 +542,9 @@ def upload_to_server(venv_zip_path, bundle):
             continue
         supported_addons[addon_name] = addon_version
 
-    lock_path = os.path.join(os.path.dirname(venv_zip_path), "poetry.lock")
-    python_modules = get_python_modules(lock_path)
+    py_project_path = os.path.join(os.path.dirname(venv_zip_path),
+                                   "pyproject.toml")
+    python_modules = get_python_modules(py_project_path)
 
     platform_name = platform.system().lower()
     package_name = os.path.splitext(os.path.basename(venv_zip_path))[0]
