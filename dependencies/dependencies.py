@@ -167,6 +167,29 @@ def get_bundle_addons_tomls(bundle):
     return bundle_addons_toml
 
 
+def get_installer_toml(bundle_name, installer_name):
+    """Returns dict with format matching of .toml file for `installer_name`.
+
+    Queries info from server for `bundle_name` and its `installer_name`,
+    transforms its list of python dependencies into dictionary matching format
+    of `.toml`
+
+    Args:
+        bundle_name (str)
+        installer_name (str)
+    Returns:
+        (dict) {"tool": {"poetry": {"dependencies": {"aaa": ">=1.0.0"...}}}}
+    """
+    installers_by_name = {installer["filename"]: installer
+                          for installer in
+                          ayon_api.get_installers()["installers"]}
+    installer = installers_by_name.get(installer_name)
+    if not installer:
+        raise ValueError(f"{bundle_name} must have installer present.")
+    poetry = {"dependencies": installer["pythonModules"]}
+    return {"tool": {"poetry": poetry}, "openpype": {"thirdparty": {}}}
+
+
 def is_valid_toml(toml):
     """Validates that 'toml' contains all required fields.
 
@@ -220,7 +243,7 @@ def merge_tomls(main_toml, addon_toml, addon_name):
                 resolved_vers = dep_version
 
             if dependency == "python":
-                resolved_vers = "3.9.*"
+                resolved_vers = "3.9.*"  # TEMP TODO
 
             if str(resolved_vers) == "<empty>":
                 raise ValueError(f"Version {dep_version} cannot be resolved against {main_version} for {addon_name}")  # noqa
@@ -462,7 +485,6 @@ def create_base_venv(base_toml_data, main_toml_path, tmpdir):
     """
     base_venv_path = os.path.join(tmpdir, ".base_venv")
     os.makedirs(base_venv_path)
-    shutil.copy(main_toml_path, base_venv_path)  # ???
     print(f"pPreparing new base venv in {base_venv_path}")
     return_code = prepare_new_venv(base_toml_data, base_venv_path)
     if return_code != 0:
@@ -656,11 +678,12 @@ def run_subprocess(*args, **kwargs):
     return proc.returncode
 
 
-def main(server_url, api_key, main_toml_path, bundle_name):
+def main(server_url, api_key, bundle_name):
     """Main endpoint to trigger full process.
 
     Pulls all active addons info from server, provides their pyproject.toml
-    (if available), takes base (build) pyproject.toml, adds tomls from addons.
+    (if available), takes base (installer) pyproject.toml, adds tomls from
+    addons.
     Builds new venv with dependencies only for addons (dependencies already
     present in build are filtered out).
     Uploads zipped venv back to server.
@@ -669,8 +692,6 @@ def main(server_url, api_key, main_toml_path, bundle_name):
         server_url (string): hostname + port for v4 Server
             default value is http://localhost:5000
         api_key (str): generated api key for service account
-        main_toml_path (str): locally assessible path to `pyproject.toml`
-            bundled with Ayon Desktop
     """
     os.environ["AYON_SERVER_URL"] = server_url
     os.environ["AYON_API_KEY"] = api_key
@@ -683,8 +704,9 @@ def main(server_url, api_key, main_toml_path, bundle_name):
 
     bundle_addons_toml = get_bundle_addons_tomls(bundle)
 
-    base_toml_data = FileTomlProvider(main_toml_path).get_toml()
-    full_toml_data = get_full_toml(base_toml_data, bundle_addons_toml)
+    installer_toml_data = get_installer_toml(bundle_name,
+                                             bundle.installerVersion)
+    full_toml_data = get_full_toml(installer_toml_data, bundle_addons_toml)
 
     applicable_package_name = get_applicable_package(full_toml_data)
     if applicable_package_name:
@@ -694,7 +716,7 @@ def main(server_url, api_key, main_toml_path, bundle_name):
     # create resolved venv based on distributed venv with Desktop + activated
     # addons
     tmpdir = tempfile.mkdtemp()
-    base_venv_path = create_base_venv(base_toml_data, main_toml_path, tmpdir)
+    base_venv_path = create_base_venv(installer_toml_data, tmpdir)
     addons_venv_path = create_addons_venv(full_toml_data, tmpdir)
 
     # remove already distributed libraries from addons specific venv
@@ -718,8 +740,6 @@ if __name__ == "__main__":
                         help="Url of v4 server")
     parser.add_argument("--api-key",
                         help="Api key")
-    parser.add_argument("--main-toml-path",
-                        help="Path to universal toml with basic dependencies")
     parser.add_argument("--bundle-name",
                         help="Bundle name for which dep package is created")
 
@@ -727,10 +747,7 @@ if __name__ == "__main__":
 
     # << for development only
     toml_path = os.path.abspath("tests\\resources\\pyproject_clean.toml")
-    kwargs = {
-        #'main_toml_path': 'C:\\Users\\petrk\\PycharmProjects\\Pype3.0\\pype\\pyproject.toml'
-        "main_toml_path": toml_path
-    }
+    kwargs = {}
     with open(".env") as fp:
         for line in fp:
             if not line:
