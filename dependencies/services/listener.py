@@ -9,16 +9,19 @@ from nxtools import logging
 
 from dependencies import main
 
+SOURCE_TOPIC = "bundle.updated"
+
 
 class DependenciesToolListener:
     def __init__(self):
-        """ Listener on "dependencies.start_create.{platform_name}" topic.
+        """ Listener on "bundle.updated" topic.
 
-        This topic should contain events triggered by Dependency addon by
-        admin to start full creation of dependency package.
+        This topic should contain events triggered by Server after bundle is
+        created or updated to start full creation of dependency package.
 
-        After consuming event from `start_create` topic new event is created on
-        "dependencies.creating_package.{platform_name}" to follow creation job.
+        After consuming event from `"bundle.updated"` topic new event is
+        created on "dependencies.creating_package.{platform_name}" to follow
+        state of creation job.
 
         There might be multiple processing workers, each for specific OS. Each
         is automatically listening on separate topic.
@@ -44,20 +47,19 @@ class DependenciesToolListener:
         logging.info("Start listening for Ayon Events...")
 
         platform_name = platform.system().lower()
-        source_topic = f"dependencies.start_create.{platform_name}"
         target_topic = f"dependencies.creating_package.{platform_name}"
 
         while True:
-            event = ayon_api.enroll_event_job(source_topic,
+            event = ayon_api.enroll_event_job(SOURCE_TOPIC,
                                               target_topic,
                                               self.worker_id,
                                               "Creating dependency package",
                                               False)
             if event:
-                logging.info("typ::{}".format(event))
                 src_job = ayon_api.get_event(event["dependsOn"])
+                bundle_name = src_job["summary"]["name"]
                 try:
-                    package_name = self.process_create_dependency()
+                    package_name = self.process_create_dependency(bundle_name)
                     description = f"{package_name} created"
                     status = "finished"
                 except Exception as e:
@@ -73,12 +75,16 @@ class DependenciesToolListener:
 
             time.sleep(2)
 
-    def process_create_dependency(self):
+    def process_create_dependency(self, bundle_name):
         """Calls full creation dependency package process
 
         Expects env vars:
             AYON_SERVER_URL
             AYON_API_KEY
+
+        Args:
+            bundle_name (str): for which bundle dependency packages should be
+                created
 
         Returns:
             (str): created package name
@@ -86,7 +92,7 @@ class DependenciesToolListener:
         try:
             package_name = main(os.environ["AYON_SERVER_URL"],
                                 os.environ["AYON_API_KEY"],
-                                "..\\tests\\resources\\pyproject_clean.toml")
+                                bundle_name)
             return package_name
         except:
             raise
