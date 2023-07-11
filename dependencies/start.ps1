@@ -34,8 +34,11 @@ function install {
     # install dependencies for tool
     Install-Poetry
     Set-Location "$($script_dir)"
+    Write-Color -Text ">>> ", "Creating venv ... ", "$($script_dir)" -Color Green, Gray
     & "$($script_dir)\.poetry\bin\poetry" config virtualenvs.in-project true --local
     & "$($script_dir)\.poetry\bin\poetry" config virtualenvs.create true --local
+    Write-Color -Text ">>> ", "Poetry config ... "  -Color Green, Gray
+    & "$($script_dir)\.poetry\bin\poetry" config --list
     & "$($script_dir)\.poetry\bin\poetry" install --no-interaction --no-ansi $poetry_verbosity
 }
 
@@ -77,7 +80,7 @@ function main {
     set_env
   } elseif ($FunctionName -eq "create") {
     set_env
-    & "$($script_dir)\.venv\Scripts\python" "$($script_dir)\dependencies.py" --server-url $($env:AYON_SERVER_URL) --api-key $($env:AYON_API_KEY) --main-toml-path $maintomlpath
+    & "$($script_dir)\.venv\Scripts\python" "$($script_dir)\dependencies.py" --server-url $($env:AYON_SERVER_URL) --api-key $($env:AYON_API_KEY)
   } else {
     Write-Host "Unknown function ""$FunctionName"""
   }
