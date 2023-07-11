@@ -54,7 +54,7 @@ class DependenciesToolListener:
                                               target_topic,
                                               self.worker_id,
                                               "Creating dependency package",
-                                              False)
+                                              sequential=True)
             if event:
                 src_job = ayon_api.get_event(event["dependsOn"])
                 bundle_name = src_job["summary"]["name"]
