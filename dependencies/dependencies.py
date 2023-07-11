@@ -475,7 +475,7 @@ def prepare_zip_venv(tmpdir):
     return venv_zip_path
 
 
-def create_base_venv(base_toml_data, main_toml_path, tmpdir):
+def create_base_venv(base_toml_data, tmpdir):
     """ create base venv - distributed with Desktop
 
     Used to filter out already installed libraries later
