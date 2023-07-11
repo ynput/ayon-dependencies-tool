@@ -13,7 +13,7 @@ nxtools = "^1.6"
 six = "^1.15"
 requests = "^2.25.1"
 toml = "^0.10.2" # for parsing pyproject.toml
-ayon-python-api = "^0.1.6"
+ayon-python-api = "^0.3.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
