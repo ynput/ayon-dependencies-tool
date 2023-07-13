@@ -621,7 +621,6 @@ def get_python_modules(venv_path):
     return packages
 
 
-
 def calculate_hash(file_url):
     with open(file_url, "rb") as f:
         checksum = hashlib.md5()
@@ -735,30 +734,44 @@ def run_subprocess(*args, **kwargs):
     kwargs['env'] = filtered_env
 
     proc = subprocess.Popen(*args, **kwargs)
+    _stdout, _stderr = proc.communicate()
 
-    _stdout = proc.stdout
-    _stderr = proc.stderr
-
-    while proc.poll() is None:
-        line = str(proc.stdout.readline())
-        sys.stdout.write(line+"\n")
-        sys.stdout.flush()
-        if "version solving failed" in line:  # tempo, shouldnt be necessary
-            proc.kill()
-            proc.returncode = 1
-            break
+    if _stdout:
+        print("\n\nOutput:\n{}".format(_clean_color_codes(str(_stdout))))
 
     if proc.returncode != 0:
         exc_msg = "Executing arguments was not successful: \"{}\"".format(args)
-        if _stdout:
-            exc_msg += "\n\nOutput:\n{}".format(_stdout)
-
         if _stderr:
-            exc_msg += "Error:\n{}".format(_stderr)
+            exc_msg += "\n\nError:\n{}".format(
+                _clean_color_codes(str(_stderr)))
 
         raise RuntimeError(exc_msg)
 
     return proc.returncode
+
+
+def _clean_color_codes(text):
+    """Completely incomplete clearing of color tags"""
+    patterns = {
+        '\\x1b[39m': "",
+        '\\x1b[39': "",
+        '\\x1b[36m': "",
+        '\\x1b[34m': "",
+        '\\x1b[32m': "",
+        ';2m': '',
+        ';22m': '',
+        ';1m': '',
+        '\\x1b[39325': '',
+        '\\x1b[39;22m\\x1b[39\\xe2\\x94\\x82\\x1b[39;22m': '',
+        ';22m\\xe2\\x94\\x82;22m': '',
+        '\\x1b[34;1m\\xe2\\x80\\xa2': '',
+        "\\r\\n": "\n"
+    }
+
+    for pattern, replacement in patterns.items():
+        text = text.replace(pattern, replacement)
+
+    return text
 
 
 def main(server_url, api_key, bundle_name):
