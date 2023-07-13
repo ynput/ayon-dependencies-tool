@@ -570,14 +570,53 @@ def get_applicable_package(new_toml):
             return package["filename"]
 
 
-def get_python_modules(py_project_path):
-    with open(py_project_path, 'r') as f:
-        py_project = toml.loads(f.read())
+def get_python_modules(venv_path):
+    """Uses pip freeze to get installed libraries from `venv_path`.
+
+    Args:
+        venv_path (str): absolute path to created dependency package already
+            with removed libraries from installer package
+    Returns:
+        (dict) {'acre': '1.0.0',...}
+    """
+    low_platform = platform.system().lower()
+    if low_platform == "windows":
+        bin_folder = "Scripts"
+    else:
+        bin_folder = "bin"
+
+    pip_executable = os.path.join(os.path.dirname(__file__),
+                                  ".venv", bin_folder, "pip")
+
+    req_path = os.path.join(venv_path, "requirements.txt")
+    cmd_args = [
+        pip_executable,
+        "freeze",
+        "-v",
+        venv_path,
+        ">",
+        req_path
+    ]
+    print(" ".join(cmd_args))
+    return_code = run_subprocess(cmd_args)
+    if return_code != 0:
+        raise RuntimeError(f"Preparation of {req_path} failed!")
+
+    with open(req_path, "r") as f:
+        requirements = f.readlines()
 
     packages = {}
-    dependencies = py_project["tool"]["poetry"]["dependencies"]
-    for package_name, package_version in dependencies.items():
-        packages[package_name] = package_version
+    for requirement in requirements:
+        requirement = requirement.strip()
+        if not requirement or requirement.startswith("#"):
+            continue
+
+        match = re.match(r"^(.+?)(?:==|>=|<=|~=|!=|@)(.+)$", requirement)
+        if match:
+            package_name, version = match.groups()
+            packages[package_name] = version
+        else:
+            packages[requirement] = None
 
     return packages
 
@@ -610,9 +649,7 @@ def upload_to_server(venv_zip_path, bundle):
             continue
         supported_addons[addon_name] = addon_version
 
-    py_project_path = os.path.join(os.path.dirname(venv_zip_path),
-                                   "pyproject.toml")
-    python_modules = get_python_modules(py_project_path)
+    python_modules = get_python_modules(venv_zip_path)
 
     platform_name = platform.system().lower()
     package_name = os.path.splitext(os.path.basename(venv_zip_path))[0]
