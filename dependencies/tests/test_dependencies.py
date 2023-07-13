@@ -16,10 +16,11 @@ from ..dependencies import (
     get_full_toml,
     prepare_new_venv,
     zip_venv,
-    get_venv_zip_name,
     lock_to_toml_data,
     remove_existing_from_venv,
-    _get_correct_version
+    _get_correct_version,
+    _convert_url_constraints,
+    _create_dependency_package_basename
 )
 
 ROOT_FOLDER = os.getenv("OPENPYPE_ROOT") or \
@@ -157,23 +158,23 @@ def _compare_resolved_tomp(result_toml):
     assert dep_version == "1.0.2"
 
 
-def test_get_venv_zip_name():
+def test_create_dependency_package_basename():
     test_file_1_path = os.path.join(TEST_RESOURCES_DIR, "pyproject.toml")
 
-    test_file_1_name = get_venv_zip_name(test_file_1_path)
-    test_file_2_name = get_venv_zip_name(test_file_1_path)
+    test_file_1_name = _create_dependency_package_basename(test_file_1_path)
+    test_file_2_name = _create_dependency_package_basename(test_file_1_path)
 
     assert test_file_1_name == test_file_2_name, \
         "Same file must result in same name"
 
     test_file_2_path = os.path.join(TEST_RESOURCES_DIR, "pyproject_clean.toml")
-    test_file_2_name = get_venv_zip_name(test_file_2_path)
+    test_file_2_name = _create_dependency_package_basename(test_file_2_path)
 
     assert test_file_1_name != test_file_2_name, \
         "Different file must result in different name"
 
     with pytest.raises(FileNotFoundError):
-        get_venv_zip_name(test_file_1_path + ".ntext")
+        _create_dependency_package_basename(test_file_1_path + ".ntext")
 
 
 def test_lock_to_toml_data():
@@ -221,15 +222,6 @@ def test_prepare_new_venv(addon_toml_to_venv_data, tmpdir):
 #
 #     assert "aiohttp" in removed, "aiohttp is in base, should be removed"
 #
-#
-# def test_zip_venv(tmpdir):
-#     zip_file_name = get_venv_zip_name(os.path.join(tmpdir, "poetry.lock"))
-#     venv_zip_path = os.path.join(tmpdir, zip_file_name)
-#     zip_venv(os.path.join(tmpdir, ".venv"),
-#              venv_zip_path)
-#
-#     assert os.path.exists(venv_zip_path)
-
 
 # def test_ServerTomlProvider():
 #     # TODO switch to mocks without test server
@@ -240,3 +232,27 @@ def test_prepare_new_venv(addon_toml_to_venv_data, tmpdir):
 #
 #     assert (tomls[0]["tool"]["poetry"]["dependencies"]["python"] == "^3.10",
 #             "Missing dependency")
+
+
+def test_convert_url_constraints_http_dependency(full_toml_data):
+    """Tests that the `_convert_url_constraints()` method correctly converts
+    an HTTP dependency."""
+    full_toml_data["tool"]["poetry"]["dependencies"] = {
+        "requests": "http://github.com/kennethreitz/requests@2.27.1"
+    }
+    _convert_url_constraints(full_toml_data)
+    assert full_toml_data["tool"]["poetry"]["dependencies"]["requests"] == {
+        "url": "http://github.com/kennethreitz/requests@2.27.1"
+    }
+
+def test_convert_url_constraints_git_dependency(full_toml_data):
+    """Tests that the `_convert_url_constraints()` method correctly converts
+    a Git dependency."""
+    full_toml_data["tool"]["poetry"]["dependencies"] = {
+        "mypackage": "git+https://github.com/myusername/mypackage@v1.2.3"
+    }
+    _convert_url_constraints(full_toml_data)
+    assert full_toml_data["tool"]["poetry"]["dependencies"]["mypackage"] == {
+        "git": "https://github.com/myusername/mypackage",
+        "rev": "v1.2.3"
+    }
