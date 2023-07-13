@@ -1,6 +1,7 @@
 import os
 import datetime
 import shutil
+import re
 import tempfile
 import toml
 import abc
@@ -242,13 +243,14 @@ def merge_tomls(main_toml, addon_toml, addon_name):
             else:
                 resolved_vers = dep_version
 
+            resolved_vers = str(resolved_vers)
             if dependency == "python":
                 resolved_vers = "3.9.*"  # TEMP TODO
 
-            if str(resolved_vers) == "<empty>":
+            if resolved_vers == "<empty>":
                 raise ValueError(f"Version {dep_version} cannot be resolved against {main_version} for {addon_name}")  # noqa
 
-            main_poetry[dependency] = str(resolved_vers)
+            main_poetry[dependency] = resolved_vers
 
         main_toml["tool"]["poetry"][key] = main_poetry
 
@@ -292,12 +294,24 @@ def _get_correct_version(main_version, dep_version):
     Returns:
         (VersionRange| EmptyConstraint if cannot be resolved)
     """
+    if dep_version and _is_url_constraint(dep_version):
+        # custom location for addon should take precedence
+        return dep_version
+
+    if main_version and _is_url_constraint(main_version):
+        return main_version
+
     if not main_version:
         return parse_constraint(dep_version)
     if not dep_version:
         return parse_constraint(main_version)
     return parse_constraint(dep_version).intersect(
                 parse_constraint(main_version))
+
+
+def _is_url_constraint(version):
+    version = str(version)
+    return "http" in version or "git" in version
 
 
 def _version_parse(version_value):
@@ -346,6 +360,16 @@ def prepare_new_venv(full_toml_data, venv_folder):
     """
     toml_path = os.path.join(venv_folder, "pyproject.toml")
 
+    tool_poetry = {}
+    tool_poetry["name"] = "TestAddon"
+    tool_poetry["version"] = "1.0.0"
+    tool_poetry["description"] = "Test Openpype Addon"
+    tool_poetry["authors"] = ["OpenPype Team <info@openpype.io>"]
+    tool_poetry["license"] = "MIT License"
+    full_toml_data["tool"]["poetry"].update(tool_poetry)
+
+    _convert_url_constraints(full_toml_data)
+
     with open(toml_path, 'w') as fp:
         fp.write(toml.dumps(full_toml_data))
 
@@ -372,7 +396,28 @@ def prepare_new_venv(full_toml_data, venv_folder):
         "-venv_path", os.path.join(venv_folder, ".venv"),
         "-verbose"
     ]
+    print(" ".join(cmd_args))
     return run_subprocess(cmd_args)
+
+
+def _convert_url_constraints(full_toml_data):
+    """Converts string occurences of "git+https" to dict required by Poetry"""
+    dependency_keyes = ["dependencies", "dev-dependencies"]
+    for key in dependency_keyes:
+        dependencies = full_toml_data["tool"]["poetry"].get(key) or {}
+        for dependency, dep_version in dependencies.items():
+            revision = None
+            dep_version = str(dep_version)
+            if _is_url_constraint(dep_version):
+                if "@" in dep_version:
+                    dep_version, revision = dep_version.split("@")
+                if dep_version.startswith("http"):
+                    dependencies[dependency] = {"url": dep_version}
+                if "git+" in dep_version:
+                    dep_version = dep_version.replace("git+", "")
+                    dependencies[dependency] = {"git": dep_version}
+                if revision:
+                    dependencies[dependency]["rev"] = revision
 
 
 def lock_to_toml_data(lock_path):
@@ -535,6 +580,7 @@ def get_python_modules(py_project_path):
         packages[package_name] = package_version
 
     return packages
+
 
 
 def calculate_hash(file_url):
