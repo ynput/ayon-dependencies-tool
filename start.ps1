@@ -34,10 +34,10 @@ function install {
     # install dependencies for tool
     Install-Poetry
     Set-Location "$($script_dir)"
-    Write-Color -Text ">>> ", "Creating venv ... ", "$($script_dir)" -Color Green, Gray
+    Write-Host ">>> ", "Creating venv ... ", "$($script_dir)"
     & "$($script_dir)\.poetry\bin\poetry" config virtualenvs.in-project true --local
     & "$($script_dir)\.poetry\bin\poetry" config virtualenvs.create true --local
-    Write-Color -Text ">>> ", "Poetry config ... "  -Color Green, Gray
+    Write-Host ">>> ", "Poetry config ... "
     & "$($script_dir)\.poetry\bin\poetry" config --list
     & "$($script_dir)\.poetry\bin\poetry" install --no-interaction --no-ansi $poetry_verbosity
 }
