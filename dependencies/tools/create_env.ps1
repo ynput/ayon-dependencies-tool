@@ -29,7 +29,7 @@ if ($verbose){
 
 $current_dir = Get-Location
 $script_dir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
-$openpype_root = (Get-Item $script_dir).parent.FullName
+$repo_root = (Get-Item $script_dir).parent.FullName
 
 
 function Exit-WithCode($exitcode) {
@@ -51,17 +51,10 @@ function Show-PSWarning() {
 }
 
 if (-not (Test-Path 'env:POETRY_HOME')) {
-    $env:POETRY_HOME = "$openpype_root\.poetry"
+    $env:POETRY_HOME = "$repo_root\.poetry"
 }
 
-Set-Location -Path $openpype_root
-
-if ($venv_path -or
-    -not (Test-Path -PathType Leaf -Path "$($openpype_root)\poetry.lock")) {
-    Write-Host ">>> ", "Installing virtual environment and creating lock."
-} else {
-    Write-Host ">>> ", "Installing virtual environment from lock."
-}
+Set-Location -Path $repo_root
 
 if ($venv_path){
    Write-Host ">>> ", "Creating virtual environment at $($venv_path)."
