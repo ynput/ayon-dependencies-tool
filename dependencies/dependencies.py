@@ -472,6 +472,8 @@ def remove_existing_from_venv(base_venv_path, addons_venv_path):
             if item.startswith("_"):
                 print(f"Keep internal {item}")
                 continue
+            if item.startswith("pip"):
+                continue
             path = os.path.join(installed_path, item)
             removed.add(item)
             print(f"Removing {path}")
