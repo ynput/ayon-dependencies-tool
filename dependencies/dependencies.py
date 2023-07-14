@@ -795,10 +795,8 @@ def main(server_url, api_key, bundle_name):
         server_url (string): hostname + port for v4 Server
             default value is http://localhost:5000
         api_key (str): generated api key for service account
+        bundle_name (str): from Ayon server
     """
-    os.environ["AYON_SERVER_URL"] = server_url
-    os.environ["AYON_API_KEY"] = api_key
-
     bundles_by_name = get_bundles()
 
     bundle = bundles_by_name.get(bundle_name)
@@ -849,14 +847,14 @@ if __name__ == "__main__":
     kwargs = parser.parse_args(sys.argv[1:]).__dict__
 
     # << for development only
-    # kwargs = {}
-    # with open(".env") as fp:
-    #     for line in fp:
-    #         if not line:
-    #             continue
-    #         key, value = line.split("=")
-    #         kwargs[key.replace("AYON_", "").strip().lower()] = value.strip().lower()
-    # kwargs["bundle_name"] = "Everything"
+    kwargs = {}
+    with open(".env") as fp:
+        for line in fp:
+            if not line:
+                continue
+            key, value = line.split("=")
+            kwargs[key.replace("AYON_", "").strip().lower()] = value.strip().lower()
+    kwargs["bundle_name"] = "Everything"
     # for development only >>
 
     main(**kwargs)
