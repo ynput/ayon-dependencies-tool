@@ -28,8 +28,9 @@ if ($verbose){
 }
 
 $current_dir = Get-Location
-$script_dir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
-$repo_root = (Get-Item $script_dir).parent.FullName
+$tools_dir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
+$repo_root = ((Get-Item $tools_dir).parent).parent.FullName
+$env:POETRY_HOME = "$repo_root\.poetry"
 
 
 function Exit-WithCode($exitcode) {
@@ -50,19 +51,17 @@ function Show-PSWarning() {
     }
 }
 
-if (-not (Test-Path 'env:POETRY_HOME')) {
-    $env:POETRY_HOME = "$repo_root\.poetry"
-}
-
 Set-Location -Path $repo_root
 
-if ($venv_path){
-   Write-Host ">>> ", "Creating virtual environment at $($venv_path)."
-   & "$env:POETRY_HOME\bin\poetry" run python -m venv $venv_path
-   $env:VIRTUAL_ENV = $venv_path
-   & "$env:POETRY_HOME\bin\poetry" config virtualenvs.create false
-   Set-Location -Path $venv_path
-}
+Write-Host ">>> ", "Creating virtual environment at $($venv_path)."
+& "$env:POETRY_HOME\bin\poetry" run python -m venv $venv_path
+$env:VIRTUAL_ENV = $venv_path
+& "$env:POETRY_HOME\bin\poetry" config virtualenvs.create false --local
+& "$env:POETRY_HOME\bin\poetry" config virtualenvs.in-project false --local
+Set-Location -Path $venv_path
+
+Write-Host ">>> ", "Poetry config ... "
+& "$env:POETRY_HOME\bin\poetry" config --list
 
 $startTime = [int][double]::Parse((Get-Date -UFormat %s))
 Write-Host ">>> ", "Installing dependencies at $($venv_path)."
