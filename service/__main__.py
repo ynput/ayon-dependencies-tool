@@ -8,5 +8,13 @@ import listener
 
 
 if __name__ == "__main__":
+    # << for development only
+    with open("../.env") as fp:
+        for line in fp:
+            if not line:
+                continue
+            key, value = line.split("=")
+            os.environ[key] = value.strip()
+    # >>
     listener = listener.DependenciesToolListener()
     sys.exit(listener.start_listening())
