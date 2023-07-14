@@ -181,7 +181,7 @@ def get_installer_toml(bundle_name, installer_name):
     Returns:
         (dict) {"tool": {"poetry": {"dependencies": {"aaa": ">=1.0.0"...}}}}
     """
-    installers_by_name = {installer["filename"]: installer
+    installers_by_name = {installer["version"]: installer
                           for installer in
                           ayon_api.get_installers()["installers"]}
     installer = installers_by_name.get(installer_name)
