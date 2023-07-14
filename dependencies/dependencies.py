@@ -591,8 +591,7 @@ def get_python_modules(venv_path):
     else:
         bin_folder = "bin"
 
-    pip_executable = os.path.join(os.path.dirname(__file__),
-                                  ".venv", bin_folder, "pip")
+    pip_executable = os.path.join(venv_path, bin_folder, "pip")
 
     req_path = os.path.join(venv_path, "requirements.txt")
     cmd_args = [
@@ -600,11 +599,11 @@ def get_python_modules(venv_path):
         "freeze",
         "-v",
         venv_path,
-        ">",
+        ">>",
         req_path
     ]
     print(" ".join(cmd_args))
-    return_code = run_subprocess(cmd_args)
+    return_code = run_subprocess(cmd_args, shell=True)
     if return_code != 0:
         raise RuntimeError(f"Preparation of {req_path} failed!")
 
@@ -614,6 +613,7 @@ def get_python_modules(venv_path):
     packages = {}
     for requirement in requirements:
         requirement = requirement.strip()
+        requirement = requirement.replace("\x1b[0m", "")
         if not requirement or requirement.startswith("#"):
             continue
 
