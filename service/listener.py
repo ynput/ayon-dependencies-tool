@@ -55,25 +55,26 @@ class DependenciesToolListener:
                                               self.worker_id,
                                               "Creating dependency package",
                                               sequential=True)
-            if event:
-                src_job = ayon_api.get_event(event["dependsOn"])
-                bundle_name = src_job["summary"]["name"]
-                try:
-                    package_name = self.process_create_dependency(bundle_name)
-                    description = f"{package_name} created"
-                    status = "finished"
-                except Exception as e:
-                    status = "failed"
-                    description = f"Creation of package failed \n {str(e)}"
+            if not event:
+                time.sleep(2)
+                continue
 
-                ayon_api.update_event(
-                    event["id"],
-                    sender=self.worker_id,
-                    status=status,
-                    description=description,
-                )
+            src_job = ayon_api.get_event(event["dependsOn"])
+            bundle_name = src_job["summary"]["name"]
+            try:
+                package_name = self.process_create_dependency(bundle_name)
+                description = f"{package_name} created"
+                status = "finished"
+            except Exception as e:
+                status = "failed"
+                description = f"Creation of package failed \n {str(e)}"
 
-            time.sleep(2)
+            ayon_api.update_event(
+                event["id"],
+                sender=self.worker_id,
+                status=status,
+                description=description,
+            )
 
     def process_create_dependency(self, bundle_name):
         """Calls full creation dependency package process
