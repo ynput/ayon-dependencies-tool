@@ -781,21 +781,18 @@ def _clean_color_codes(text):
     return text
 
 
-def main(server_url, api_key, bundle_name):
-    """Main endpoint to trigger full process.
-
-    Pulls all active addons info from server, provides their pyproject.toml
+def create_package(bundle_name):
+    """
+        Pulls all active addons info from server, provides their pyproject.toml
     (if available), takes base (installer) pyproject.toml, adds tomls from
     addons.
     Builds new venv with dependencies only for addons (dependencies already
     present in build are filtered out).
     Uploads zipped venv back to server.
 
-    Args:
-        server_url (string): hostname + port for v4 Server
-            default value is http://localhost:5000
-        api_key (str): generated api key for service account
-        bundle_name (str): from Ayon server
+    Expects env vars:
+        AYON_SERVER_URL
+        AYON_API_KEY
     """
     bundles_by_name = get_bundles()
 
@@ -834,8 +831,28 @@ def main(server_url, api_key, bundle_name):
     return package_name
 
 
-if __name__ == "__main__":
+def main(server_url, api_key, bundle_name):
+    """Main endpoint to trigger full process.
 
+    Sets env vars: (needed for ayon_api connection)
+        AYON_SERVER_URL
+        AYON_API_KEY
+
+    Args:
+        server_url (string): hostname + port for v4 Server
+            default value is http://localhost:5000
+        api_key (str): generated api key for service account
+        bundle_name (str): from Ayon server
+    Returns:
+        (string) name of created package
+    """
+    os.environ["AYON_SERVER_URL"] = server_url
+    os.environ["AYON_API_KEY"] = api_key
+
+    return create_package(bundle_name)
+
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--server-url",
                         help="Url of v4 server")
@@ -847,14 +864,15 @@ if __name__ == "__main__":
     kwargs = parser.parse_args(sys.argv[1:]).__dict__
 
     # << for development only
-    kwargs = {}
-    with open(".env") as fp:
-        for line in fp:
-            if not line:
-                continue
-            key, value = line.split("=")
-            kwargs[key.replace("AYON_", "").strip().lower()] = value.strip().lower()
-    kwargs["bundle_name"] = "Everything"
+    # kwargs = {}
+    # with open("../.env") as fp:
+    #     for line in fp:
+    #         if not line:
+    #             continue
+    #         key, value = line.split("=")
+    #         os.environ[key] = value.strip()
+    #         kwargs[key.replace("AYON_", "").strip().lower()] = value.strip().lower()
+    # kwargs["bundle_name"] = "Everything"
     # for development only >>
 
     main(**kwargs)

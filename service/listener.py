@@ -1,4 +1,3 @@
-import os
 import sys
 import time
 import signal
@@ -7,7 +6,7 @@ import platform
 import ayon_api
 from nxtools import logging
 
-from dependencies import main
+from ..dependencies.dependencies import create_package
 
 SOURCE_TOPIC = "bundle.updated"
 
@@ -90,10 +89,4 @@ class DependenciesToolListener:
         Returns:
             (str): created package name
         """
-        try:
-            package_name = main(os.environ["AYON_SERVER_URL"],
-                                os.environ["AYON_API_KEY"],
-                                bundle_name)
-            return package_name
-        except:
-            raise
+        return create_package(bundle_name)
