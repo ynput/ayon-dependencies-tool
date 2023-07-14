@@ -654,7 +654,8 @@ def upload_to_server(venv_zip_path, bundle):
             continue
         supported_addons[addon_name] = addon_version
 
-    python_modules = get_python_modules(venv_zip_path)
+    venv_path = os.path.join(os.path.dirname(venv_zip_path), ".venv")
+    python_modules = get_python_modules(venv_path)
 
     platform_name = platform.system().lower()
     package_name = os.path.splitext(os.path.basename(venv_zip_path))[0]
