@@ -80,7 +80,7 @@ function main {
     set_env
   } elseif ($FunctionName -eq "create") {
     set_env
-    & "$($script_dir)\.venv\Scripts\python" "$($script_dir)\dependencies.py" --server-url $($env:AYON_SERVER_URL) --api-key $($env:AYON_API_KEY) --bundle-name $bundlename
+    & "$($script_dir)\.venv\Scripts\python" "$($script_dir)\dependencies\dependencies.py" --server-url $($env:AYON_SERVER_URL) --api-key $($env:AYON_API_KEY) --bundle-name $bundlename
   } else {
     Write-Host "Unknown function ""$FunctionName"""
   }
