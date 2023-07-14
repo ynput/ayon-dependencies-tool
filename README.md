@@ -24,5 +24,5 @@ Entry point for manual triggering is `dependencies/start.ps1`.
 
 Implemented commands:
 - `install` - creates `dependencies/.venv` with requirements for this tool
-- `create` - runs main process to create new dependency package and uploads it. Expects `--bundle-name` argument 
+- `create` - runs main process to create new dependency package and uploads it. Expects argument with name of Bundle (eg. `./start.ps1 create MyBundle`)
 - `listen` - starts service connecting to Ayon server and listening for events to trigger main process (TBD)
