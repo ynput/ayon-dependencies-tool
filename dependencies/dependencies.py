@@ -849,15 +849,14 @@ if __name__ == "__main__":
     kwargs = parser.parse_args(sys.argv[1:]).__dict__
 
     # << for development only
-    toml_path = os.path.abspath("tests\\resources\\pyproject_clean.toml")
-    kwargs = {}
-    with open(".env") as fp:
-        for line in fp:
-            if not line:
-                continue
-            key, value = line.split("=")
-            kwargs[key.replace("AYON_", "").strip().lower()] = value.strip().lower()
-    kwargs["bundle_name"] = "Core"
+    # kwargs = {}
+    # with open(".env") as fp:
+    #     for line in fp:
+    #         if not line:
+    #             continue
+    #         key, value = line.split("=")
+    #         kwargs[key.replace("AYON_", "").strip().lower()] = value.strip().lower()
+    # kwargs["bundle_name"] = "Everything"
     # for development only >>
 
     main(**kwargs)
