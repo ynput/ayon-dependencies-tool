@@ -294,6 +294,10 @@ def _get_correct_version(main_version, dep_version):
     Returns:
         (VersionRange| EmptyConstraint if cannot be resolved)
     """
+    if isinstance(dep_version, dict):
+        dep_version = dep_version["version"]
+    if isinstance(main_version, dict):
+        main_version = main_version["version"]
     if dep_version and _is_url_constraint(dep_version):
         # custom location for addon should take precedence
         return dep_version
