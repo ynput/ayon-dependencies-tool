@@ -800,10 +800,6 @@ def create_package(bundle_name):
     if not bundle:
         raise ValueError(f"{bundle_name} not present on the server.")
 
-    packages = ayon_api.get_dependency_packages()
-
-    for package in packages["packages"]:
-        ayon_api.delete_dependency_package(package["filename"])
     bundle_addons_toml = get_bundle_addons_tomls(bundle)
 
     installer_toml_data = get_installer_toml(bundle_name,
@@ -869,14 +865,14 @@ if __name__ == "__main__":
 
     # << for development only
     # kwargs = {}
-    with open("../.env") as fp:
-        for line in fp:
-            if not line:
-                continue
-            key, value = line.split("=")
-            os.environ[key] = value.strip()
-            kwargs[key.replace("AYON_", "").strip().lower()] = value.strip().lower()
-    kwargs["bundle_name"] = "Everything"
+    # with open("../.env") as fp:
+    #     for line in fp:
+    #         if not line:
+    #             continue
+    #         key, value = line.split("=")
+    #         os.environ[key] = value.strip()
+    #         kwargs[key.replace("AYON_", "").strip().lower()] = value.strip().lower()
+    # kwargs["bundle_name"] = "Better_Then_Everything"
     # for development only >>
 
     main(**kwargs)
