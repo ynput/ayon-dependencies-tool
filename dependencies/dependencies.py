@@ -658,14 +658,14 @@ def upload_to_server(venv_zip_path, bundle):
     python_modules = get_python_modules(venv_path)
 
     platform_name = platform.system().lower()
-    package_name = os.path.splitext(os.path.basename(venv_zip_path))[0]
+    package_name = os.path.basename(venv_zip_path)
     checksum = calculate_hash(venv_zip_path)
 
     ayon_api.create_dependency_package(
         filename=package_name,
         python_modules=python_modules,
         source_addons=bundle.addons,
-        installer_version=bundle.installerVersion,
+        installer_version=bundle.installerVersion or "dummyInstaller",
         checksum=str(checksum),
         checksum_algorithm="md5",
         file_size=os.stat(venv_zip_path).st_size,
@@ -800,6 +800,10 @@ def create_package(bundle_name):
     if not bundle:
         raise ValueError(f"{bundle_name} not present on the server.")
 
+    packages = ayon_api.get_dependency_packages()
+
+    for package in packages["packages"]:
+        ayon_api.delete_dependency_package(package["filename"])
     bundle_addons_toml = get_bundle_addons_tomls(bundle)
 
     installer_toml_data = get_installer_toml(bundle_name,
@@ -865,14 +869,14 @@ if __name__ == "__main__":
 
     # << for development only
     # kwargs = {}
-    # with open("../.env") as fp:
-    #     for line in fp:
-    #         if not line:
-    #             continue
-    #         key, value = line.split("=")
-    #         os.environ[key] = value.strip()
-    #         kwargs[key.replace("AYON_", "").strip().lower()] = value.strip().lower()
-    # kwargs["bundle_name"] = "Everything"
+    with open("../.env") as fp:
+        for line in fp:
+            if not line:
+                continue
+            key, value = line.split("=")
+            os.environ[key] = value.strip()
+            kwargs[key.replace("AYON_", "").strip().lower()] = value.strip().lower()
+    kwargs["bundle_name"] = "Everything"
     # for development only >>
 
     main(**kwargs)
