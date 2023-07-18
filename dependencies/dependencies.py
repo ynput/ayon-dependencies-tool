@@ -19,6 +19,7 @@ import attr
 from typing import Dict, List
 
 import ayon_api
+from ayon_api import create_dependency_package_basename
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -517,10 +518,10 @@ def prepare_zip_venv(tmpdir):
     Returns:
         (str) path to zipped venv
     """
-    # create_dependency_package_basename not yet part of public API
-    zip_file_name = f"{_create_dependency_package_basename()}.zip"
+
+    zip_file_name = f"{create_dependency_package_basename()}.zip"
     venv_zip_path = os.path.join(tmpdir, zip_file_name)
-    print(f"pZipping new venv to {venv_zip_path}")
+    print(f"Zipping new venv to {venv_zip_path}")
     zip_venv(os.path.join(tmpdir, ".venv"), venv_zip_path)
 
     return venv_zip_path
@@ -691,14 +692,6 @@ def update_bundle_with_package(bundle, package_name):
     bundle.dependencyPackages[platform_str] = package_name
     ayon_api.update_bundle(bundle.name, bundle.dependencyPackages)
 
-
-def _create_dependency_package_basename(platform_name=None):
-    if platform_name is None:
-        platform_name = platform.system().lower()
-
-    now_date = datetime.datetime.now()
-    time_stamp = now_date.strftime("%y%m%d%H%M")
-    return "ayon_{}_{}".format(time_stamp, platform_name)
 
 
 # TODO copy from openpype.lib.execute, could be imported directly??
