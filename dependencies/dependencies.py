@@ -680,11 +680,6 @@ def upload_to_server(con, venv_zip_path, bundle):
     Returns:
         str: Package name.
     """
-    supported_addons = {}
-    for addon_name, addon_version in bundle.addons.items():
-        if addon_version is None:
-            continue
-        supported_addons[addon_name] = addon_version
 
     venv_path = os.path.join(os.path.dirname(venv_zip_path), ".venv")
     python_modules = get_python_modules(venv_path)
