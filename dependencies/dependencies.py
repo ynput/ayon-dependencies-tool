@@ -173,18 +173,21 @@ def get_bundle_addons_tomls(con, bundle):
     """Query addons for `bundle` to get their python dependencies.
 
     Returns:
-        (dict) of (dict)  {'core_1.0.0': {toml}}
+        dict[str, dict[str, Any]]: {'core_1.0.0': {...toml content...}}
     """
-    bundle_addons = [f"{key}_{value}"
-                     for key, value in bundle.addons.items()
-                     if value is not None]
-    addon_tomls = get_all_addon_tomls()
 
-    bundle_addons_toml = {}
-    for addon_full_name, toml in addon_tomls.items():
-        if addon_full_name in bundle_addons:
-            bundle_addons_toml[addon_full_name] = toml
-    return bundle_addons_toml
+    bundle_addons = {
+        f"{key}_{value}"
+        for key, value in bundle.addons.items()
+        if value is not None
+    }
+    addon_tomls = get_all_addon_tomls(con)
+
+    return {
+        addon_full_name: toml
+        for addon_full_name, toml in addon_tomls.items()
+        if addon_full_name in bundle_addons
+    }
 
 
 def find_installer_by_name(con, bundle_name, installer_name):
