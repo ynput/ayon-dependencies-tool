@@ -679,6 +679,7 @@ def _remove_tmpdir(tmpdir):
         shutil.rmtree(tmpdir)
     return failed
 
+
 def create_package(bundle_name, con=None):
     """
         Pulls all active addons info from server, provides their pyproject.toml
@@ -703,6 +704,10 @@ def create_package(bundle_name, con=None):
 
     bundle_addons_toml = get_bundle_addons_tomls(con, bundle)
 
+    # Installer is not set, dependency package cannot be created
+    if bundle.installer_version is None:
+        print(f"Bundle '{bundle.name}' does not have set installer.")
+        return None
 
     installer = find_installer_by_name(
         con, bundle_name, bundle.installer_version)
