@@ -80,7 +80,7 @@ def get_bundle_addons_tomls(con, bundle):
     """Query addons for `bundle` to get their python dependencies.
 
     Returns:
-        dict[str, dict[str, str]]: {'core_1.0.0': {...toml content...}}
+        dict[str, dict[str, Any]]: {'core_1.0.0': {...toml content...}}
     """
 
     bundle_addons = {
@@ -634,11 +634,21 @@ def update_bundle_with_package(con, bundle, package_name):
 
     print(f"Updating in {bundle.name} with {package_name}")
     platform_str = platform.system().lower()
-    bundle.dependency_packages[platform_str] = package_name
-    con.update_bundle(bundle.name, bundle.dependency_packages)
+    dependency_packages = copy.deepcopy(bundle.dependency_packages)
+    dependency_packages[platform_str] = package_name
+    con.update_bundle(bundle.name, dependency_packages)
 
 
 def is_file_deletable(filepath):
+    """Can be file deleted.
+
+    Args:
+        filepath (str): Path to a file.
+
+    Returns:
+        bool: File can be removed.
+    """
+
     file_dirname = os.path.dirname(filepath)
     if os.access(file_dirname, os.W_OK | os.X_OK):
         try:
@@ -652,6 +662,16 @@ def is_file_deletable(filepath):
 
 
 def _remove_tmpdir(tmpdir):
+    """Safer removement of temp directory.
+
+    Notes:
+        @iLLiCiTiT Function was created because I've hit issues with
+            'shutil.rmtree' on tmpdir -> lead to many un-cleared temp dirs.
+
+    Args:
+        tmpdir (str): Path to temp directory.
+    """
+
     failed = []
     if not os.path.exists(tmpdir):
         return failed
@@ -706,12 +726,11 @@ def create_package(bundle_name, con=None):
 
     # Installer is not set, dependency package cannot be created
     if bundle.installer_version is None:
+        print(f"Bundle '{bundle.name}' does not have set installer.")
         return None
 
     installer = find_installer_by_name(
         con, bundle_name, bundle.installer_version)
-    print(json.dumps(installer, indent=4))
-    return
     installer_toml_data = get_installer_toml(installer)
     full_toml_data = get_full_toml(installer_toml_data, bundle_addons_toml)
 
