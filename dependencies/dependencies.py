@@ -350,18 +350,39 @@ def _convert_url_constraints(full_toml_data):
     for key in dependency_keyes:
         dependencies = full_toml_data["tool"]["poetry"].get(key) or {}
         for dependency, dep_version in dependencies.items():
-            revision = None
             dep_version = str(dep_version)
-            if _is_url_constraint(dep_version):
-                if "@" in dep_version:
-                    dep_version, revision = dep_version.split("@")
-                if dep_version.startswith("http"):
-                    dependencies[dependency] = {"url": dep_version}
-                if "git+" in dep_version:
-                    dep_version = dep_version.replace("git+", "")
-                    dependencies[dependency] = {"git": dep_version}
-                if revision:
-                    dependencies[dependency]["rev"] = revision
+            if not _is_url_constraint(dep_version):
+                continue
+
+            try:
+                # TODO there is probably better way how to handle this
+                # Dictionary from requirements.txt contains raw string
+                # - "{'git': 'https://...'}"
+                dep_version = json.loads(dep_version.replace("'", '"'))
+            except ValueError:
+                pass
+
+            if isinstance(dep_version, dict):
+                dependencies[dependency] = dep_version
+                continue
+
+            revision = None
+            if "@" in dep_version:
+                parts = dep_version.split("@")
+                dep_version = parts.pop(0)
+                revision = "@".join(parts)
+
+            if dep_version.startswith("http"):
+                dependencies[dependency] = {"url": dep_version}
+                continue
+
+            if "git+" in dep_version:
+                dep_version = dep_version.replace("git+", "")
+                dependencies[dependency] = {"git": dep_version}
+                continue
+
+            if revision:
+                dependencies[dependency]["rev"] = revision
 
 
 def lock_to_toml_data(lock_path):
