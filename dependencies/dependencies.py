@@ -529,44 +529,30 @@ def get_python_modules(venv_path):
     Returns:
         (dict) {'acre': '1.0.0',...}
     """
-    low_platform = platform.system().lower()
-    if low_platform == "windows":
-        bin_folder = "Scripts"
-    else:
-        bin_folder = "bin"
 
-    pip_executable = os.path.join(venv_path, bin_folder, "pip")
+    pip_executable = get_venv_executable(venv_path, "pip")
 
-    req_path = os.path.join(venv_path, "requirements.txt")
-    cmd_args = [
-        pip_executable,
-        "freeze",
-        "-v",
-        venv_path,
-        ">>",
-        req_path
-    ]
-    print(" ".join(cmd_args))
-    return_code = run_subprocess(cmd_args, shell=True)
-    if return_code != 0:
-        raise RuntimeError(f"Preparation of {req_path} failed!")
-
-    with open(req_path, "r") as f:
-        requirements = f.readlines()
+    process = subprocess.Popen(
+        [pip_executable, "freeze", venv_path, "--no-color"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    _stdout, _stderr = process.communicate()
+    if process.returncode != 0:
+        raise RuntimeError(f"Failed to freeze pip packages.")
 
     packages = {}
-    for requirement in requirements:
-        requirement = requirement.strip()
-        requirement = requirement.replace("\x1b[0m", "")
-        if not requirement or requirement.startswith("#"):
+    for line in _stdout.decode("utf-8").split("\n"):
+        line = line.strip()
+        if not line:
             continue
 
-        match = re.match(r"^(.+?)(?:==|>=|<=|~=|!=|@)(.+)$", requirement)
+        match = re.match(r"^(.+?)(?:==|>=|<=|~=|!=|@)(.+)$", line)
         if match:
             package_name, version = match.groups()
-            packages[package_name] = version
+            packages[package_name.rstrip()] = version.lstrip()
         else:
-            packages[requirement] = None
+            packages[line] = None
 
     return packages
 
