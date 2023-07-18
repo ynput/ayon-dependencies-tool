@@ -8,5 +8,4 @@ import listener
 
 
 if __name__ == "__main__":
-    listener = listener.DependenciesToolListener()
-    sys.exit(listener.start_listening())
+    listener.main()

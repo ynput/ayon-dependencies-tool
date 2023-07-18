@@ -93,3 +93,12 @@ class DependenciesToolListener:
             (str): created package name
         """
         return create_package(bundle_name)
+
+
+def main():
+    listener = DependenciesToolListener()
+    sys.exit(listener.start_listening())
+
+
+if __name__ == "__main__":
+    main()
