@@ -101,12 +101,9 @@ class ServerTomlProvider(AbstractTomlProvider):
 @attr.s
 class Bundle:
     name: str = attr.ib()
-    createdAt: str = attr.ib()
-    isProduction: bool = attr.ib()
-    isStaging: bool = attr.ib()
-    installerVersion: str = attr.ib(default=None)
-    addons: Dict[str, str] = attr.ib(default={})
-    dependencyPackages: Dict[str, str] = attr.ib(default={})
+    addons: Dict[str, str] = attr.ib()
+    dependency_packages: Dict[str, str] = attr.ib()
+    installer_version: Union[str, None] = attr.ib()
 
 
 @attr.s
@@ -139,7 +136,12 @@ def get_bundles(con):
     """
     bundles_by_name = {}
     for bundle_dict in con.get_bundles()["bundles"]:
-        bundle = Bundle(**bundle_dict)
+        bundle = Bundle(
+            name=bundle_dict["name"],
+            installer_version=bundle_dict["installerVersion"],
+            addons=bundle_dict["addons"],
+            dependency_packages=bundle_dict["dependencyPackages"],
+        )
         bundles_by_name[bundle.name] = bundle
     return bundles_by_name
 
@@ -692,7 +694,7 @@ def upload_to_server(con, venv_zip_path, bundle):
         filename=package_name,
         python_modules=python_modules,
         source_addons=bundle.addons,
-        installer_version=bundle.installerVersion or "dummyInstaller",
+        installer_version=bundle.installer_version,
         checksum=str(checksum),
         checksum_algorithm="md5",
         file_size=os.stat(venv_zip_path).st_size,
@@ -718,8 +720,9 @@ def update_bundle_with_package(con, bundle, package_name):
 
     print(f"Updating in {bundle.name} with {package_name}")
     platform_str = platform.system().lower()
-    bundle.dependency_packages[platform_str] = package_name
-    con.update_bundle(bundle.name, bundle.dependency_packages)
+    dependency_packages = copy.deepcopy(bundle.dependency_packages)
+    dependency_packages[platform_str] = package_name
+    con.update_bundle(bundle.name, dependency_packages)
 
 
 def is_file_deletable(filepath):
