@@ -21,6 +21,10 @@ from typing import Dict, List
 import ayon_api
 from ayon_api import create_dependency_package_basename
 
+from .utils import (
+    run_subprocess,
+)
+
 
 @six.add_metaclass(abc.ABCMeta)
 class AbstractTomlProvider:
@@ -692,86 +696,6 @@ def update_bundle_with_package(bundle, package_name):
     bundle.dependencyPackages[platform_str] = package_name
     ayon_api.update_bundle(bundle.name, bundle.dependencyPackages)
 
-
-
-# TODO copy from openpype.lib.execute, could be imported directly??
-def run_subprocess(*args, **kwargs):
-    """Convenience method for getting output errors for subprocess.
-
-    Output logged when process finish.
-
-    Entered arguments and keyword arguments are passed to subprocess Popen.
-
-    Args:
-        *args: Variable length arument list passed to Popen.
-        **kwargs : Arbitrary keyword arguments passed to Popen. Is possible to
-            pass `logging.Logger` object under "logger" if want to use
-            different than lib's logger.
-
-    Returns:
-        str: Full output of subprocess concatenated stdout and stderr.
-
-    Raises:
-        RuntimeError: Exception is raised if process finished with nonzero
-            return code.
-    """
-
-    # Get environents from kwarg or use current process environments if were
-    # not passed.
-    env = kwargs.get("env") or os.environ
-    # Make sure environment contains only strings
-    filtered_env = {str(k): str(v) for k, v in env.items()}
-
-    # Use lib's logger if was not passed with kwargs.
-    logger = kwargs.pop("logger", None)
-    if logger is None:
-        logger = logging.getLogger("dependencies_tool")
-
-    # set overrides
-    kwargs['stdout'] = kwargs.get('stdout', subprocess.PIPE)
-    kwargs['stderr'] = kwargs.get('stderr', subprocess.PIPE)
-    kwargs['stdin'] = kwargs.get('stdin', subprocess.PIPE)
-    kwargs['env'] = filtered_env
-
-    proc = subprocess.Popen(*args, **kwargs)
-    _stdout, _stderr = proc.communicate()
-
-    if _stdout:
-        print("\n\nOutput:\n{}".format(_clean_color_codes(str(_stdout))))
-
-    if proc.returncode != 0:
-        exc_msg = "Executing arguments was not successful: \"{}\"".format(args)
-        if _stderr:
-            exc_msg += "\n\nError:\n{}".format(
-                _clean_color_codes(str(_stderr)))
-
-        raise RuntimeError(exc_msg)
-
-    return proc.returncode
-
-
-def _clean_color_codes(text):
-    """Completely incomplete clearing of color tags"""
-    patterns = {
-        '\\x1b[39m': "",
-        '\\x1b[39': "",
-        '\\x1b[36m': "",
-        '\\x1b[34m': "",
-        '\\x1b[32m': "",
-        ';2m': '',
-        ';22m': '',
-        ';1m': '',
-        '\\x1b[39325': '',
-        '\\x1b[39;22m\\x1b[39\\xe2\\x94\\x82\\x1b[39;22m': '',
-        ';22m\\xe2\\x94\\x82;22m': '',
-        '\\x1b[34;1m\\xe2\\x80\\xa2': '',
-        "\\r\\n": "\n"
-    }
-
-    for pattern, replacement in patterns.items():
-        text = text.replace(pattern, replacement)
-
-    return text
 
 
 def create_package(bundle_name):
