@@ -13,16 +13,19 @@ It is expected to be run on machine that has set reasonable development environm
 
 Should be standalone, not depending on Openpype libraries.
 
-`dependencies/.env` must be created with filled env vars:
+`./.env` must be created with filled env vars:
 - AYON_API_KEY=api key for service account from Ayon Server
 - AYON_SERVER_URL=Ayon server tool should communicate with
 
-
 The tool should run automatically and listen for events on the Server OR could be run manually on machine(s).
 
-Entry point for manual triggering is `dependencies/start.ps1`.
+Entry point for manual triggering is `dependencies/manage.ps1`.
 
 Implemented commands:
 - `install` - creates `dependencies/.venv` with requirements for this tool
-- `create` - runs main process to create new dependency package and uploads it. Expects argument with name of Bundle (eg. `./start.ps1 create MyBundle`)
+- `create` - runs main process to create new dependency package and uploads it. Expects argument with name of Bundle (eg. `./manage.ps1 create MyBundle`)
 - `listen` - starts service connecting to Ayon server and listening for events to trigger main process (TBD)
+
+TODO:
+- [ ] reuse python version from Installer (requirement for `pyenv`?)
+- [ ] create dependency package to output folder

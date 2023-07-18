@@ -16,7 +16,7 @@ function Default-Func {
     Write-Host ""
     Write-Host "Ayon dependency package tool"
     Write-Host ""
-    Write-Host "Usage: ./start.ps1 [target]"
+    Write-Host "Usage: ./manage.ps1 [target]"
     Write-Host ""
     Write-Host "Runtime targets:"
     Write-Host "  install                       Install Poetry and update venv by lock file."
