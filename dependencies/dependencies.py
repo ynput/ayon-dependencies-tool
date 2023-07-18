@@ -319,32 +319,30 @@ def prepare_new_venv(full_toml_data, venv_folder):
     with open(toml_path, 'w') as fp:
         fp.write(toml.dumps(full_toml_data))
 
-    low_platform = platform.system().lower()
+    poetry_bin = os.path.join(os.getenv("POETRY_HOME"), "bin", "poetry.exe")
+    venv_path = os.path.join(venv_folder, ".venv")
+    env = dict(os.environ.items())
+    run_subprocess(
+        [poetry_bin, "run", "python", "-m", "venv", venv_path],
+        env=env
+    )
+    env["VIRTUAL_ENV"] = venv_path
+    for cmd in (
+        [poetry_bin, "config", "virtualenvs.create", "false", "--local"],
+        [poetry_bin, "config", "virtualenvs.in-project", "false", "--local"],
+    ):
+        run_subprocess(cmd, env=env)
 
-    if low_platform == "windows":
-        ext = "ps1"
-        executable = "powershell"
-    else:
-        ext = "sh"
-        executable = "bash"
-
-    create_env_script_path = os.path.abspath(os.path.join(
-                                                os.path.dirname(__file__),
-                                                "tools",
-                                                f"create_env.{ext}"))
-    if not os.path.exists(create_env_script_path):
-        raise RuntimeError(
-            f"Expected create_env script here {create_env_script_path}")
-
-    cmd_args = [
-        executable,
-        create_env_script_path,
-        "-venv_path", os.path.join(venv_folder, ".venv"),
-        "-verbose"
-    ]
-    print(" ".join(cmd_args))
-    return run_subprocess(cmd_args)
-
+    run_subprocess(
+        [poetry_bin, "config", "--list"],
+        env=env,
+        cwd=venv_path
+    )
+    return run_subprocess(
+        [poetry_bin, "install", "--no-root", "--ansi"],
+        env=env,
+        cwd=venv_path
+    )
 
 def _convert_url_constraints(full_toml_data):
     """Converts string occurences of "git+https" to dict required by Poetry"""
