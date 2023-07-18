@@ -1,22 +1,20 @@
 import os
-import datetime
-import shutil
 import re
 import tempfile
-import toml
-import abc
-import six
-from packaging import version
-import subprocess
+import copy
 import platform
-import sys
 import hashlib
-import logging
-import argparse
-from poetry.core.constraints.version import parse_constraint
 import zipfile
+import json
 import attr
-from typing import Dict, List
+import subprocess
+import collections
+import shutil
+from typing import Dict, Union
+from packaging import version
+
+import toml
+from poetry.core.constraints.version import parse_constraint
 
 import ayon_api
 from ayon_api import create_dependency_package_basename
@@ -24,6 +22,8 @@ from ayon_api import create_dependency_package_basename
 from .utils import (
     run_subprocess,
     ZipFileLongPaths,
+    get_venv_executable,
+    get_venv_site_packages,
 )
 
 
@@ -129,7 +129,9 @@ def get_installer_toml(installer):
             }
         },
         "ayon": {
-            "thirdparty": {}
+            "runtimeDependencies": {
+                copy.deepcopy(installer["runtimePythonModules"])
+            }
         }
     }
 
@@ -138,16 +140,18 @@ def is_valid_toml(toml):
     """Validates that 'toml' contains all required fields.
 
     Args:
-        toml (dict)
+        toml (dict[str, Any])
+
     Returns:
         True if all required keys present
+
     Raises:
         KeyError
     """
-    required_fields = ["tool.poetry"]
 
+    required_fields = ["tool.poetry"]
     for field in required_fields:
-        fields = field.split('.')
+        fields = field.split(".")
         value = toml
         while fields:
             key = fields.pop(0)
@@ -166,8 +170,8 @@ def merge_tomls(main_toml, addon_toml, addon_name):
 
     Handles sections:
         - ["tool"]["poetry"]["dependencies"]
-        - ["tool"]["poetry"][""-dependencies"]
-        - ["openpype"]["thirdparty"]
+        - ["tool"]["poetry"]["dev-dependencies"]
+        - ["ayon"]["runtimeDependencies"]
 
     Returns:
         (dict): updated 'main_toml' with additional/updated dependencies
@@ -175,6 +179,7 @@ def merge_tomls(main_toml, addon_toml, addon_name):
     Raises:
         ValueError if any tuple of main and addon dependency cannot be resolved
     """
+
     dependency_keyes = ["dependencies", "dev-dependencies"]
     for key in dependency_keyes:
         main_poetry = main_toml["tool"]["poetry"].get(key) or {}
@@ -184,6 +189,7 @@ def merge_tomls(main_toml, addon_toml, addon_name):
                 main_version = main_poetry[dependency]
                 resolved_vers = _get_correct_version(main_version, dep_version)
             else:
+                main_version = "N/A"
                 resolved_vers = dep_version
 
             resolved_vers = str(resolved_vers)
@@ -191,39 +197,47 @@ def merge_tomls(main_toml, addon_toml, addon_name):
                 resolved_vers = "3.9.*"  # TEMP TODO
 
             if resolved_vers == "<empty>":
-                raise ValueError(f"Version {dep_version} cannot be resolved against {main_version} for {addon_name}")  # noqa
+                raise ValueError(
+                    f"Version {dep_version} cannot be resolved against"
+                    f" {main_version} for {addon_name}"
+                )
 
             main_poetry[dependency] = resolved_vers
 
         main_toml["tool"]["poetry"][key] = main_poetry
 
-    # handle thirdparty
+    # handle runtime dependencies
     platform_name = platform.system().lower()
 
-    addon_poetry = addon_toml.get("openpype", {}).get("thirdparty", {})
-    main_poetry = main_toml["openpype"].get("thirdparty", {})  # reset level
+    addon_poetry = addon_toml.get("ayon", {}).get("runtimeDependencies")
+    if not addon_poetry:
+        return main_toml
+
+    main_poetry = main_toml["ayon"]["runtimeDependencies"]
     for dependency, dep_info in addon_poetry.items():
         if main_poetry.get(dependency):
             if dep_info.get(platform_name):
                 dep_version = dep_info[platform_name]["version"]
-                main_version = (main_poetry[dependency]
-                                           [platform_name]
-                                           ["version"])
+                main_version = (
+                    main_poetry[dependency][platform_name]["version"])
             else:
                 dep_version = dep_info["version"]
                 main_version = main_poetry[dependency]["version"]
 
             result_range = _get_correct_version(main_version, dep_version)
-            if (str(result_range) != "<empty>" and
-                    parse_constraint(dep_version).allows(result_range)):
+            if (
+                str(result_range) != "<empty>"
+                and parse_constraint(dep_version).allows(result_range)
+            ):
                 dep_info = main_poetry[dependency]
             else:
-                raise ValueError(f"Cannot result {dependency} with {dep_info} for {addon_name}")  # noqa
+                raise ValueError(
+                    f"Cannot result {dependency} with"
+                    f" {dep_info} for {addon_name}"
+                )
 
         if dep_info:
             main_poetry[dependency] = dep_info
-
-    main_toml["openpype"]["thirdparty"] = main_poetry
 
     return main_toml
 
@@ -234,9 +248,11 @@ def _get_correct_version(main_version, dep_version):
     Arg:
         main_version (str): version or constraint ("3.6.1", "^3.7")
         dep_version (str): dtto
+
     Returns:
         (VersionRange| EmptyConstraint if cannot be resolved)
     """
+
     if isinstance(dep_version, dict):
         dep_version = dep_version["version"]
     if isinstance(main_version, dict):
@@ -253,7 +269,8 @@ def _get_correct_version(main_version, dep_version):
     if not dep_version:
         return parse_constraint(main_version)
     return parse_constraint(dep_version).intersect(
-                parse_constraint(main_version))
+        parse_constraint(main_version)
+    )
 
 
 def _is_url_constraint(version):
@@ -282,14 +299,16 @@ def get_full_toml(base_toml_data, addon_tomls):
     Args:
         base_toml_data (dict): content of pyproject.toml in the root
         addon_tomls (dict): content of addon pyproject.toml
+
     Returns:
         (dict) updated base .toml
     """
+
     for addon_name, addon_toml_data in addon_tomls.items():
         if isinstance(addon_toml_data, str):
             addon_toml_data = toml.loads(addon_toml_data)
-        base_toml_data = merge_tomls(base_toml_data, addon_toml_data,
-                                     addon_name)
+        base_toml_data = merge_tomls(
+            base_toml_data, addon_toml_data, addon_name)
 
     return base_toml_data
 
@@ -301,23 +320,25 @@ def prepare_new_venv(full_toml_data, venv_folder):
         full_toml_data (dict): toml representation calculated based on basic
             .toml + all addon tomls
         venv_folder (str): path where venv should be created
+
     Raises:
         RuntimeError: Exception is raised if process finished with nonzero
             return code.
     """
-    toml_path = os.path.join(venv_folder, "pyproject.toml")
 
-    tool_poetry = {}
-    tool_poetry["name"] = "TestAddon"
-    tool_poetry["version"] = "1.0.0"
-    tool_poetry["description"] = "Test Openpype Addon"
-    tool_poetry["authors"] = ["OpenPype Team <info@openpype.io>"]
-    tool_poetry["license"] = "MIT License"
+    toml_path = os.path.join(venv_folder, "pyproject.toml")
+    tool_poetry = {
+        "name": "AYONDepPackage",
+        "version": "1.0.0",
+        "description": "Dependency package for AYON",
+        "authors": ["Ynput s.r.o. <info@openpype.io>"],
+        "license": "MIT License",
+    }
     full_toml_data["tool"]["poetry"].update(tool_poetry)
 
     _convert_url_constraints(full_toml_data)
 
-    with open(toml_path, 'w') as fp:
+    with open(toml_path, "w") as fp:
         fp.write(toml.dumps(full_toml_data))
 
     poetry_bin = os.path.join(os.getenv("POETRY_HOME"), "bin", "poetry.exe")
@@ -493,8 +514,7 @@ def create_addons_venv(full_toml_data, tmpdir):
     return_code = prepare_new_venv(full_toml_data, tmpdir)
     if return_code != 0:
         raise RuntimeError(f"Preparation of {tmpdir} failed!")
-    addons_venv_path = os.path.join(tmpdir, ".venv")
-    return addons_venv_path
+    return os.path.join(tmpdir, ".venv")
 
 
 def get_applicable_package(con, new_toml):
