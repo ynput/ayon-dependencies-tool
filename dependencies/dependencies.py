@@ -131,31 +131,43 @@ class AddonVersion:
     services: List[str] = attr.ib(default=[])
 
 
-def get_bundles():
+def get_bundles(con):
     """Provides dictionary with available bundles
 
     Returns:
         (dict) of (Bundle) {"BUNDLE_NAME": Bundle}
     """
     bundles_by_name = {}
-    for bundle_dict in ayon_api.get_bundles()["bundles"]:
+    for bundle_dict in con.get_bundles()["bundles"]:
         bundle = Bundle(**bundle_dict)
         bundles_by_name[bundle.name] = bundle
     return bundles_by_name
 
 
-def get_all_addon_tomls():
+def get_all_addon_tomls(con):
     """Provides list of dict containing addon tomls.
 
     Returns:
         (dict) of (dict)
     """
-    server_endpoint = "addons?details=1"
 
-    return ServerTomlProvider(server_endpoint).get_tomls()
+    tomls = {}
+    response = con.get_addons_info(details=True)
+    for addon_dict in response["addons"]:
+        addon_name = addon_dict["name"]
+        addon_versions = addon_dict["versions"]
+
+        for version_name, addon_version_dict in addon_versions.items():
+            client_pyproject = addon_version_dict.get("clientPyproject")
+            if not client_pyproject:
+                continue
+            full_name = f"{addon_name}_{version_name}"
+            tomls[full_name] = client_pyproject
+
+    return tomls
 
 
-def get_bundle_addons_tomls(bundle):
+def get_bundle_addons_tomls(con, bundle):
     """Query addons for `bundle` to get their python dependencies.
 
     Returns:
@@ -173,27 +185,41 @@ def get_bundle_addons_tomls(bundle):
     return bundle_addons_toml
 
 
-def get_installer_toml(bundle_name, installer_name):
+def find_installer_by_name(con, bundle_name, installer_name):
+    for installer in con.get_installers()["installers"]:
+        if installer["version"] == installer_name:
+            return installer
+    raise ValueError(f"{bundle_name} must have installer present.")
+
+
+def get_installer_toml(installer):
     """Returns dict with format matching of .toml file for `installer_name`.
 
     Queries info from server for `bundle_name` and its `installer_name`,
     transforms its list of python dependencies into dictionary matching format
     of `.toml`
 
+    Example output:
+        {"tool": {"poetry": {"dependencies": {"somepymodule": "1.0.0"...}}}}
+
     Args:
-        bundle_name (str)
-        installer_name (str)
+        installer (dict[str, Any])
+
     Returns:
-        (dict) {"tool": {"poetry": {"dependencies": {"aaa": ">=1.0.0"...}}}}
+        dict[str, Any]: Installer toml content.
     """
-    installers_by_name = {installer["version"]: installer
-                          for installer in
-                          ayon_api.get_installers()["installers"]}
-    installer = installers_by_name.get(installer_name)
-    if not installer:
-        raise ValueError(f"{bundle_name} must have installer present.")
-    poetry = {"dependencies": installer["pythonModules"]}
-    return {"tool": {"poetry": poetry}, "openpype": {"thirdparty": {}}}
+
+    return {
+        "tool": {
+            "poetry": {
+                # Create copy to avoid modifying original data
+                "dependencies": copy.deepcopy(installer["pythonModules"])
+            }
+        },
+        "ayon": {
+            "thirdparty": {}
+        }
+    }
 
 
 def is_valid_toml(toml):
@@ -558,7 +584,7 @@ def create_addons_venv(full_toml_data, tmpdir):
     return addons_venv_path
 
 
-def get_applicable_package(new_toml):
+def get_applicable_package(con, new_toml):
     """Compares existing dependency packages to find matching.
 
     One dep package could contain same versions of python dependencies for
@@ -573,7 +599,7 @@ def get_applicable_package(new_toml):
     toml_python_packages = dict(
         sorted(new_toml["tool"]["poetry"]["dependencies"].items())
     )
-    for package in ayon_api.get_dependency_packages()["packages"]:
+    for package in con.get_dependency_packages()["packages"]:
         package_python_packages = dict(sorted(
             package["pythonModules"].items())
         )
@@ -643,15 +669,16 @@ def calculate_hash(file_url):
     return checksum.hexdigest()
 
 
-def upload_to_server(venv_zip_path, bundle):
+def upload_to_server(con, venv_zip_path, bundle):
     """Creates and uploads package on the server
+
     Args:
-        venv_zip_path (str): local path to zipped venv
+        con (ayon_api.ServerAPI): Connection to server.
+        venv_zip_path (str): Local path to zipped venv.
+        bundle (Bundle): Bundle object.
+
     Returns:
-        (str): package name for logging
-        (Bundle): bundle object
-    Raises:
-          (RuntimeError)
+        str: Package name.
     """
     supported_addons = {}
     for addon_name, addon_version in bundle.addons.items():
@@ -666,7 +693,7 @@ def upload_to_server(venv_zip_path, bundle):
     package_name = os.path.basename(venv_zip_path)
     checksum = calculate_hash(venv_zip_path)
 
-    ayon_api.create_dependency_package(
+    con.create_dependency_package(
         filename=package_name,
         python_modules=python_modules,
         source_addons=bundle.addons,
@@ -678,27 +705,30 @@ def upload_to_server(venv_zip_path, bundle):
         platform_name=platform_name,
     )
 
-    ayon_api.upload_dependency_package(venv_zip_path, package_name,
-                                       platform_name)
+    con.upload_dependency_package(
+        venv_zip_path, package_name, platform_name
+    )
 
     return package_name
 
 
-def update_bundle_with_package(bundle, package_name):
+def update_bundle_with_package(con, bundle, package_name):
     """Assign `package_name` to `bundle`
 
     Args:
+        con (ayon_api.ServerAPI)
         bundle (Bundle)
         package_name (str)
     """
+
     print(f"Updating in {bundle.name} with {package_name}")
     platform_str = platform.system().lower()
-    bundle.dependencyPackages[platform_str] = package_name
-    ayon_api.update_bundle(bundle.name, bundle.dependencyPackages)
+    bundle.dependency_packages[platform_str] = package_name
+    con.update_bundle(bundle.name, bundle.dependency_packages)
 
 
 
-def create_package(bundle_name):
+def create_package(bundle_name, con=None):
     """
         Pulls all active addons info from server, provides their pyproject.toml
     (if available), takes base (installer) pyproject.toml, adds tomls from
@@ -707,25 +737,30 @@ def create_package(bundle_name):
     present in build are filtered out).
     Uploads zipped venv back to server.
 
-    Expects env vars:
-        AYON_SERVER_URL
-        AYON_API_KEY
+    Args:
+        bundle_name (str): Name of bundle for which is package created.
+        con (Optional[ayon_api.ServerAPI]): Prepared server API object.
     """
-    bundles_by_name = get_bundles()
+
+    if con is None:
+        con = ayon_api.get_server_api_connection()
+    bundles_by_name = get_bundles(con)
 
     bundle = bundles_by_name.get(bundle_name)
     if not bundle:
         raise ValueError(f"{bundle_name} not present on the server.")
 
-    bundle_addons_toml = get_bundle_addons_tomls(bundle)
+    bundle_addons_toml = get_bundle_addons_tomls(con, bundle)
 
-    installer_toml_data = get_installer_toml(bundle_name,
-                                             bundle.installerVersion)
+
+    installer = find_installer_by_name(
+        con, bundle_name, bundle.installer_version)
+    installer_toml_data = get_installer_toml(installer)
     full_toml_data = get_full_toml(installer_toml_data, bundle_addons_toml)
 
-    applicable_package_name = get_applicable_package(full_toml_data)
+    applicable_package_name = get_applicable_package(con, full_toml_data)
     if applicable_package_name:
-        update_bundle_with_package(bundle, applicable_package_name)
+        update_bundle_with_package(con, bundle, applicable_package_name)
         return applicable_package_name
 
     # create resolved venv based on distributed venv with Desktop + activated
@@ -739,9 +774,9 @@ def create_package(bundle_name):
 
     venv_zip_path = prepare_zip_venv(tmpdir)
 
-    package_name = upload_to_server(venv_zip_path, bundle)
+    package_name = upload_to_server(con, venv_zip_path, bundle)
 
-    update_bundle_with_package(bundle, package_name)
+    update_bundle_with_package(con, bundle, package_name)
 
     shutil.rmtree(tmpdir)
 
