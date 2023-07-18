@@ -23,6 +23,7 @@ from ayon_api import create_dependency_package_basename
 
 from .utils import (
     run_subprocess,
+    ZipFileLongPaths,
 )
 
 
@@ -451,27 +452,31 @@ def remove_existing_from_venv(base_venv_path, addons_venv_path):
     return removed
 
 
-def zip_venv(venv_folder, zip_destination_path):
+def zip_venv(venv_folder, zip_filepath):
     """Zips newly created venv to single .zip file."""
-    temp_dir_to_zip_s = venv_folder.replace("\\", "/")
-    with zipfile.ZipFile(zip_destination_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for root, dirnames, filenames in os.walk(venv_folder):
-            root_s = root.replace("\\", "/")
-            zip_root = root_s.replace(temp_dir_to_zip_s, "").strip("/")
-            for name in sorted(dirnames):
-                path = os.path.normpath(os.path.join(root, name))
-                zip_path = name
-                if zip_root:
-                    zip_path = "/".join((zip_root, name))
-                zipf.write(path, zip_path)
 
-            for name in filenames:
-                path = os.path.normpath(os.path.join(root, name))
-                zip_path = name
-                if zip_root:
-                    zip_path = "/".join((zip_root, name))
-                if os.path.isfile(path):
-                    zipf.write(path, zip_path)
+    site_packages_roots = get_venv_site_packages(venv_folder)
+    with ZipFileLongPaths(zip_filepath, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for site_packages_root in site_packages_roots:
+            sp_root_len_start = len(site_packages_root) + 1
+            for root, _, filenames in os.walk(site_packages_root):
+                # Care only about files
+                if not filenames:
+                    continue
+
+                # Skip __pycache__ folders
+                root_name = os.path.basename(root)
+                if root_name == "__pycache__":
+                    continue
+
+                dst_root = ""
+                if len(root) > sp_root_len_start:
+                    dst_root = root[sp_root_len_start:]
+
+                for filename in filenames:
+                    src_path = os.path.join(root, filename)
+                    dst_path = os.path.join("dependencies", dst_root, filename)
+                    zipf.write(src_path, dst_path)
 
 
 def prepare_zip_venv(tmpdir):
