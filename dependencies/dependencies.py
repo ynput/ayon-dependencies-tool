@@ -572,13 +572,10 @@ def get_python_modules(venv_path):
 
 
 def calculate_hash(file_url):
+    checksum = hashlib.md5()
     with open(file_url, "rb") as f:
-        checksum = hashlib.md5()
-        chunk = f.read(8192)
-        while chunk:
+        for chunk in iter(lambda: f.read(8192), b""):
             checksum.update(chunk)
-            chunk = f.read(8192)
-
     return checksum.hexdigest()
 
 
