@@ -34,28 +34,6 @@ class Bundle:
     installer_version: Union[str, None] = attr.ib()
 
 
-@attr.s
-class Addon:
-    name: str = attr.ib()
-    title: str = attr.ib()
-    description: str = attr.ib()
-    productionVersion: bool = attr.ib(default=None)  # TODO
-    stagingVersion: bool = attr.ib(default=None)
-    versions: Dict[str, str] = attr.ib(default={})
-
-
-@attr.s
-class AddonVersion:
-    hasSettings: bool = attr.ib()
-    hasSiteSettings: bool = attr.ib()
-    frontendScopes: Dict[str, str] = attr.ib()
-    name: str = attr.ib(default=None)
-    full_name: str = attr.ib(default=None)
-    clientPyproject: Dict[str, str] = attr.ib(default={})
-    clientSourceInfo: List[str] = attr.ib(default=[])
-    services: List[str] = attr.ib(default=[])
-
-
 def get_bundles(con):
     """Provides dictionary with available bundles
 
