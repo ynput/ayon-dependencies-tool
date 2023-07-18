@@ -53,23 +53,6 @@ class AbstractTomlProvider:
         pass
 
 
-class FileTomlProvider(AbstractTomlProvider):
-    """Class that parses toml from 'source_url' into dictionary."""
-    def __init__(self, source_url):
-        self.source_url = os.path.abspath(source_url)
-
-    def get_toml(self):
-        if not os.path.exists(self.source_url):
-            raise ValueError(f"{self.source_url} doesn't exist. "
-                             "Provide path to real toml.")
-
-        with open(self.source_url) as fp:
-            return toml.load(fp)
-
-    def get_tomls(self):
-        raise NotImplementedError
-
-
 class ServerTomlProvider(AbstractTomlProvider):
     """Class that parses tomls from 'server_endpoint' into dictionary."""
     def __init__(self, server_endpoint):
@@ -474,16 +457,21 @@ def lock_to_toml_data(lock_path):
     Raises:
         (FileNotFound)
     """
-    parsed = FileTomlProvider(lock_path).get_toml()
 
-    dependencies = {}
-    for package_info in parsed["package"]:
-        dependencies[package_info["name"]] = package_info["version"]
+    if not os.path.exists(lock_path):
+        raise ValueError(
+            f"{lock_path} doesn't exist. Provide path to real toml."
+        )
 
-    toml = {"tool": {"poetry": {"dependencies": {}}}}
-    toml["tool"]["poetry"]["dependencies"] = dependencies
+    with open(lock_path) as fp:
+        parsed = toml.load(fp)
 
-    return toml
+    dependencies = {
+        package_info["name"]: package_info["version"]
+        for package_info in parsed["package"]
+    }
+
+    return {"tool": {"poetry": {"dependencies": dependencies}}}
 
 
 def remove_existing_from_venv(base_venv_path, addons_venv_path):
