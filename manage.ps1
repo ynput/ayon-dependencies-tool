@@ -103,7 +103,7 @@ function main {
     } elseif ($FunctionName -eq "listen") {
         Change-Cwd
         set_env
-        & "$env:POETRY_HOME\bin\poetry" run python "$($repo_root)\service\listener.py" @arguments
+        & "$env:POETRY_HOME\bin\poetry" run python "$($repo_root)\service" @arguments
     } elseif ($FunctionName -eq "set_env") {
         Change-Cwd
         set_env
