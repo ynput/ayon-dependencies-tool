@@ -824,7 +824,7 @@ def create_package(bundle_name, con=None):
 
     # create resolved venv based on distributed venv with Desktop + activated
     # addons
-    tmpdir = tempfile.mkdtemp()
+    tmpdir = tempfile.mkdtemp(prefix="ayon_dep-package")
     base_venv_path = create_base_venv(installer_toml_data, tmpdir)
     addons_venv_path = create_addons_venv(full_toml_data, tmpdir)
 
