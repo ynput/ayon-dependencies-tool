@@ -26,61 +26,6 @@ from .utils import (
 )
 
 
-@six.add_metaclass(abc.ABCMeta)
-class AbstractTomlProvider:
-    """Interface class to base real toml data providers."""
-    @abc.abstractmethod
-    def get_toml(self):
-        """
-            Returns dict containing toml information
-
-
-        Returns:
-            (dict)
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_tomls(self):
-        """
-            Returns dict of dict containing toml information
-
-        Some providers (http) are returning all tomls in one go.
-        Returns:
-            (dict) of (dict)
-            { "example": {"poetry":{}..}}
-        """
-        pass
-
-
-class ServerTomlProvider(AbstractTomlProvider):
-    """Class that parses tomls from 'server_endpoint' into dictionary."""
-    def __init__(self, server_endpoint):
-        self.server_endpoint = server_endpoint
-
-    def get_toml(self):
-        raise NotImplementedError
-
-    def get_tomls(self):
-        tomls = {}
-
-        con = ayon_api.create_connection()
-
-        response = con.get(self.server_endpoint)
-
-        for addon_dict in response.data["addons"]:
-            addon = Addon(**addon_dict)
-            for version_name, addon_version_dict in addon.versions.items():
-                addon_version = AddonVersion(**addon_version_dict)
-                if not addon_version.clientPyproject:
-                    continue
-                addon_version.name = version_name
-                addon_version.full_name = f"{addon.name}_{version_name}"
-                tomls[addon_version.full_name] = addon_version.clientPyproject
-
-        return tomls
-
-
 @attr.s
 class Bundle:
     name: str = attr.ib()
