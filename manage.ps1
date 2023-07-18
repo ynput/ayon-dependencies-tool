@@ -8,8 +8,8 @@ if ($ARGS.Length -gt 1) {
 $poetry_verbosity="-vv"
 
 $current_dir = Get-Location
-$script_dir_rel = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
-$script_dir = (Get-Item $script_dir_rel).FullName
+$repo_root_rel = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
+$repo_root = (Get-Item $repo_root_rel).FullName
 
 
 function Default-Func {
@@ -49,13 +49,13 @@ function Install-Poetry() {
         $python = & pyenv which python
     }
 
-    $env:POETRY_HOME="$script_dir\.poetry"
+    $env:POETRY_HOME="$repo_root\.poetry"
     $env:POETRY_VERSION="1.3.2"
     (Invoke-WebRequest -Uri https://install.python-poetry.org/ -UseBasicParsing).Content | & $($python) -
 }
 
 function Change-Cwd() {
-    Set-Location -Path $script_dir
+    Set-Location -Path $repo_root
 }
 
 function Restore-Cwd() {
@@ -69,22 +69,18 @@ function install {
     }
 
     Change-Cwd
-    Write-Host ">>> ", "Creating venv ... ", "$($script_dir)"
-    & "$env:POETRY_HOME\bin\poetry" config virtualenvs.in-project true --local
-    & "$env:POETRY_HOME\bin\poetry" config virtualenvs.create true --local
 
     Write-Host ">>> ", "Poetry config ... "
-    & "$env:POETRY_HOME\bin\poetry" config --list
     & "$env:POETRY_HOME\bin\poetry" install --no-interaction --no-root --ansi  $poetry_verbosity
 }
 
 function set_env {
     # set all env vars in .env file
-    if (-not (Test-Path "$($script_dir)\.env")) {
+    if (-not (Test-Path "$($repo_root)\.env")) {
         Write-Host "!!! ", ".env file must be prepared!" -ForegroundColor red
         Exit-WithCode 1
     } else {
-        $content = Get-Content -Path "$($script_dir)\.env" -Encoding UTF8 -Raw
+        $content = Get-Content -Path "$($repo_root)\.env" -Encoding UTF8 -Raw
         foreach($line in $content.split()) {
             if ($line){
                 $parts = $line.split("=")
@@ -107,14 +103,14 @@ function main {
     } elseif ($FunctionName -eq "listen") {
         Change-Cwd
         set_env
-        & "$env:POETRY_HOME\bin\poetry" run python "$($script_dir)\service\listener.py" @arguments
+        & "$env:POETRY_HOME\bin\poetry" run python "$($repo_root)\service\listener.py" @arguments
     } elseif ($FunctionName -eq "set_env") {
         Change-Cwd
         set_env
     } elseif ($FunctionName -eq "create") {
         Change-Cwd
         set_env
-        & "$env:POETRY_HOME\bin\poetry" run python "$($script_dir)\dependencies" create @arguments
+        & "$env:POETRY_HOME\bin\poetry" run python "$($repo_root)\dependencies" create @arguments
     } else {
         Write-Host "Unknown function \"$FunctionName\""
         Default-Func
@@ -122,8 +118,7 @@ function main {
     Restore-Cwd
 }
 
-if (-not (Test-Path 'env:POETRY_HOME')) {
-    $env:POETRY_HOME = "$script_dir\.poetry"
-}
+# Force POETRY_HOME to this directory
+$env:POETRY_HOME = "$repo_root\.poetry"
 
 main
