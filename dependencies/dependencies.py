@@ -417,39 +417,30 @@ def lock_to_toml_data(lock_path):
     return {"tool": {"poetry": {"dependencies": dependencies}}}
 
 
-def remove_existing_from_venv(base_venv_path, addons_venv_path):
+def remove_existing_from_venv(addons_venv_path, installer):
     """Loop through calculated addon venv and remove already installed libs.
 
     Args:
-        base_venv_path (str): path to base venv of build
         addons_venv_path (str): path to newly created merged venv for active
             addons
+        installer (dict[str, Any]): installer data from server.
+
     Returns:
         (set) of folder/file paths that were removed from addon venv, used only
             for testing
     """
-    checked_subfolders = os.path.join("Lib", "site-packages")
-    base_content = set(os.listdir(os.path.join(base_venv_path,
-                                               checked_subfolders)))
 
-    removed = set()
-    installed_path = os.path.join(addons_venv_path, checked_subfolders)
-    for item in os.listdir(installed_path):
-        if item in base_content:
-            if item.startswith("_"):
-                print(f"Keep internal {item}")
-                continue
-            if item.startswith("pip"):
-                continue
-            path = os.path.join(installed_path, item)
-            removed.add(item)
-            print(f"Removing {path}")
-            if os.path.isdir(path):
-                shutil.rmtree(path)
-            if os.path.isfile(path):
-                os.remove(path)
-
-    return removed
+    pip_executable = get_venv_executable(addons_venv_path, "pip")
+    print("Removing packages from venv")
+    print("\n".join([
+        f"- {package_name}"
+        for package_name in sorted(installer["pythonModules"])
+    ]))
+    for package_name in installer["pythonModules"]:
+        run_subprocess(
+            [pip_executable, "uninstall", package_name, "--yes"],
+            bound_output=False
+        )
 
 
 def zip_venv(venv_folder, zip_filepath):
@@ -495,24 +486,6 @@ def prepare_zip_venv(tmpdir):
     zip_venv(os.path.join(tmpdir, ".venv"), venv_zip_path)
 
     return venv_zip_path
-
-
-def create_base_venv(base_toml_data, tmpdir):
-    """ create base venv - distributed with Desktop
-
-    Used to filter out already installed libraries later
-
-    Args:
-        base_toml_data (dict): content of toml for Desktop app
-    """
-    base_venv_path = os.path.join(tmpdir, ".base_venv")
-    os.makedirs(base_venv_path)
-    print(f"pPreparing new base venv in {base_venv_path}")
-    return_code = prepare_new_venv(base_toml_data, base_venv_path)
-    if return_code != 0:
-        raise RuntimeError(f"Preparation of {base_venv_path} failed!")
-    base_venv_path = os.path.join(base_venv_path, ".venv")
-    return base_venv_path
 
 
 def create_addons_venv(full_toml_data, tmpdir):
@@ -761,11 +734,13 @@ def create_package(bundle_name, con=None):
     # create resolved venv based on distributed venv with Desktop + activated
     # addons
     tmpdir = tempfile.mkdtemp(prefix="ayon_dep-package")
-    base_venv_path = create_base_venv(installer_toml_data, tmpdir)
+
+    print(">>> Creating processing directory {}".format(tmpdir))
+
     addons_venv_path = create_addons_venv(full_toml_data, tmpdir)
 
     # remove already distributed libraries from addons specific venv
-    remove_existing_from_venv(base_venv_path, addons_venv_path)
+    remove_existing_from_venv(addons_venv_path, installer)
 
     venv_zip_path = prepare_zip_venv(tmpdir)
 
