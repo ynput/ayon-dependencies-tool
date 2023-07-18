@@ -727,6 +727,65 @@ def update_bundle_with_package(con, bundle, package_name):
     con.update_bundle(bundle.name, bundle.dependency_packages)
 
 
+def is_file_deletable(filepath):
+    """Can be file deleted.
+
+    Args:
+        filepath (str): Path to a file.
+
+    Returns:
+        bool: File can be removed.
+    """
+
+    file_dirname = os.path.dirname(filepath)
+    if os.access(file_dirname, os.W_OK | os.X_OK):
+        try:
+            with open(filepath, "w"):
+                pass
+            return True
+        except OSError:
+            pass
+
+    return False
+
+
+def _remove_tmpdir(tmpdir):
+    """Safer removement of temp directory.
+
+    Notes:
+        @iLLiCiTiT Function was created because I've hit issues with
+            'shutil.rmtree' on tmpdir -> lead to many un-cleared temp dirs.
+
+    Args:
+        tmpdir (str): Path to temp directory.
+    """
+
+    failed = []
+    if not os.path.exists(tmpdir):
+        return failed
+
+    filepaths = set()
+    for root, dirnames, filenames in os.walk(tmpdir):
+        for filename in filenames:
+            filepaths.add(os.path.join(root, filename))
+
+    remove_queue = collections.deque()
+    for filepath in filepaths:
+        remove_queue.append((filepath, 0))
+
+    while remove_queue:
+        (filepath, attempt) = remove_queue.popleft()
+        try:
+            os.remove(filepath)
+        except OSError:
+            if attempt > 3:
+                failed.append(filepath)
+            else:
+                remove_queue.append((filepath, attempt + 1))
+
+    if not failed:
+        shutil.rmtree(tmpdir)
+    return failed
 
 def create_package(bundle_name, con=None):
     """
@@ -778,7 +837,11 @@ def create_package(bundle_name, con=None):
 
     update_bundle_with_package(con, bundle, package_name)
 
-    shutil.rmtree(tmpdir)
+    print(">>> Cleaning up processing directory {}".format(tmpdir))
+    failed_paths = _remove_tmpdir(tmpdir)
+    if failed_paths:
+        print("Failed to cleanup tempdir: {}".format(tmpdir))
+        print("\n".join(sorted(failed_paths)))
 
     return package_name
 
