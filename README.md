@@ -29,3 +29,4 @@ Implemented commands:
 TODO:
 - [ ] reuse python version from Installer (requirement for `pyenv`?)
 - [ ] create dependency package to output folder
+- [ ] handle runtime dependencies too
