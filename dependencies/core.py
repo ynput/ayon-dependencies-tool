@@ -662,7 +662,7 @@ def upload_to_server(con, venv_zip_path, package_data):
     con.create_dependency_package(**package_data)
     con.upload_dependency_package(
         venv_zip_path,
-        package_data["package_name"],
+        package_data["filename"],
         package_data["platform_name"]
     )
 
