@@ -537,7 +537,7 @@ def get_applicable_package(con, new_toml):
             package["pythonModules"].items())
         )
         if toml_python_packages == package_python_packages:
-            return package["filename"]
+            return package
 
 
 def get_python_modules(venv_path):
@@ -585,16 +585,17 @@ def calculate_hash(file_url):
     return checksum.hexdigest()
 
 
-def upload_to_server(con, venv_zip_path, bundle):
-    """Creates and uploads package on the server
+def prepare_package_data(venv_zip_path, bundle):
+    """Creates package data for server.
+
+    All data in output are used to call 'create_dependency_package'.
 
     Args:
-        con (ayon_api.ServerAPI): Connection to server.
         venv_zip_path (str): Local path to zipped venv.
-        bundle (Bundle): Bundle object.
+        bundle (Bundle): Bundle object with all data.
 
     Returns:
-        str: Package name.
+          dict[str, Any]: Dependency package information.
     """
 
     venv_path = os.path.join(os.path.dirname(venv_zip_path), ".venv")
@@ -604,38 +605,82 @@ def upload_to_server(con, venv_zip_path, bundle):
     package_name = os.path.basename(venv_zip_path)
     checksum = calculate_hash(venv_zip_path)
 
-    con.create_dependency_package(
-        filename=package_name,
-        python_modules=python_modules,
-        source_addons=bundle.addons,
-        installer_version=bundle.installer_version,
-        checksum=str(checksum),
-        checksum_algorithm="md5",
-        file_size=os.stat(venv_zip_path).st_size,
-        sources=None,
-        platform_name=platform_name,
-    )
+    return {
+        "filename": package_name,
+        "python_modules": python_modules,
+        "source_addons": bundle.addons,
+        "installer_version": bundle.installer_version,
+        "checksum": checksum,
+        "checksum_algorithm": "md5",
+        "file_size": os.stat(venv_zip_path).st_size,
+        "platform_name": platform_name,
+    }
 
+
+def stored_package_to_dir(
+    output_dir, venv_zip_path, bundle, package_data
+):
+    """Store dependency package to output directory.
+
+    A json file with dependency package information is created and stored
+    next to the dependency package file (replaced extension with .json).
+
+    Bundle name is added to dependency package before saving.
+
+    Args:
+        output_dir (str): Path where dependency package will be stored.
+        venv_zip_path (str): Local path to zipped venv.
+        bundle (Bundle): Bundle object with all data.
+        package_data (dict[str, Any]): Dependency package information.
+    """
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    new_package_data = copy.deepcopy(package_data)
+    new_package_data["bundle_name"] = bundle.name
+    filename = new_package_data["filename"]
+    output_path = os.path.join(output_dir, filename)
+    shutil.copy(venv_zip_path, output_path)
+    metadata_path = output_path + ".json"
+    with open(metadata_path, "w") as stream:
+        json.dump(new_package_data, stream, indent=4)
+
+
+def upload_to_server(con, venv_zip_path, package_data):
+    """Creates and uploads package on the server
+
+    Args:
+        con (ayon_api.ServerAPI): Connection to server.
+        venv_zip_path (str): Local path to zipped venv.
+        package_data (dict[str, Any]): Package information.
+
+    Returns:
+        str: Package name.
+    """
+
+    con.create_dependency_package(**package_data)
     con.upload_dependency_package(
-        venv_zip_path, package_name, platform_name
+        venv_zip_path,
+        package_data["package_name"],
+        package_data["platform_name"]
     )
 
-    return package_name
 
-
-def update_bundle_with_package(con, bundle, package_name):
+def update_bundle_with_package(con, bundle, package_data):
     """Assign `package_name` to `bundle`
 
     Args:
         con (ayon_api.ServerAPI)
         bundle (Bundle)
-        package_name (str)
+        package_data (dict[str, Any])
     """
 
+    package_name = package_data["filename"]
     print(f"Updating in {bundle.name} with {package_name}")
-    platform_str = platform.system().lower()
+    platform_name = package_data["platform_name"]
     dependency_packages = copy.deepcopy(bundle.dependency_packages)
-    dependency_packages[platform_str] = package_name
+    dependency_packages[platform_name] = package_name
     con.update_bundle(bundle.name, dependency_packages)
 
 
@@ -700,7 +745,7 @@ def _remove_tmpdir(tmpdir):
     return failed
 
 
-def create_package(bundle_name, con=None):
+def create_package(bundle_name, con=None, output_dir=None, skip_upload=False):
     """
         Pulls all active addons info from server, provides their pyproject.toml
     (if available), takes base (installer) pyproject.toml, adds tomls from
@@ -712,6 +757,9 @@ def create_package(bundle_name, con=None):
     Args:
         bundle_name (str): Name of bundle for which is package created.
         con (Optional[ayon_api.ServerAPI]): Prepared server API object.
+        output_dir (Optional[str]): Path to directory where package will be
+            created.
+        skip_upload (Optional[bool]): Skip upload to server. Default: False.
     """
 
     if con is None:
@@ -734,10 +782,10 @@ def create_package(bundle_name, con=None):
     installer_toml_data = get_installer_toml(installer)
     full_toml_data = get_full_toml(installer_toml_data, bundle_addons_toml)
 
-    applicable_package_name = get_applicable_package(con, full_toml_data)
-    if applicable_package_name:
-        update_bundle_with_package(con, bundle, applicable_package_name)
-        return applicable_package_name
+    applicable_package = get_applicable_package(con, full_toml_data)
+    if applicable_package:
+        update_bundle_with_package(con, bundle, applicable_package)
+        return applicable_package["filename"]
 
     # create resolved venv based on distributed venv with Desktop + activated
     # addons
@@ -752,9 +800,13 @@ def create_package(bundle_name, con=None):
 
     venv_zip_path = prepare_zip_venv(tmpdir)
 
-    package_name = upload_to_server(con, venv_zip_path, bundle)
+    package_data = prepare_package_data(venv_zip_path, bundle)
+    if output_dir:
+        stored_package_to_dir(output_dir, venv_zip_path, bundle, package_data)
 
-    update_bundle_with_package(con, bundle, package_name)
+    if not skip_upload:
+        upload_to_server(con, venv_zip_path, package_data)
+        update_bundle_with_package(con, bundle, package_data)
 
     print(">>> Cleaning up processing directory {}".format(tmpdir))
     failed_paths = _remove_tmpdir(tmpdir)
@@ -762,4 +814,4 @@ def create_package(bundle_name, con=None):
         print("Failed to cleanup tempdir: {}".format(tmpdir))
         print("\n".join(sorted(failed_paths)))
 
-    return package_name
+    return package_data["filename"]
