@@ -341,7 +341,7 @@ def prepare_new_venv(full_toml_data, venv_folder):
     with open(toml_path, "w") as fp:
         fp.write(toml.dumps(full_toml_data))
 
-    poetry_bin = os.path.join(os.getenv("POETRY_HOME"), "bin", "poetry.exe")
+    poetry_bin = os.path.join(os.getenv("POETRY_HOME"), "bin", "poetry")
     venv_path = os.path.join(venv_folder, ".venv")
     env = dict(os.environ.items())
     run_subprocess(
