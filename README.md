@@ -30,3 +30,6 @@ Implemented commands:
 TODO:
 - [ ] reuse python version from Installer (requirement for `pyenv`?)
 - [ ] handle runtime dependencies too
+    - consider runtime dependencies from installer
+    - give option to addons define their runtime dependencies
+- [ ] skip dependency package creation if there are not any addons with dependencies
