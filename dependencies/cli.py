@@ -3,7 +3,7 @@ import click
 import ayon_api
 from ayon_api.constants import SERVER_URL_ENV_KEY, SERVER_API_ENV_KEY
 
-from .core import create_package
+from .core import create_package, get_bundles
 
 
 @click.group()
@@ -47,6 +47,32 @@ def create(bundle_name, skip_upload, output_dir, server, api_key):
         skip_upload=skip_upload,
         output_dir=output_dir
     )
+
+
+@main_cli.command(help="List available bundles on AYON server")
+@click.option(
+    "--server",
+    help="AYON server url",
+    envvar=SERVER_URL_ENV_KEY)
+@click.option(
+    "--api-key",
+    help="Api key",
+    envvar=SERVER_API_ENV_KEY)
+def list_bundles(server, api_key):
+    if server:
+        os.environ[SERVER_URL_ENV_KEY] = server
+
+    if api_key:
+        os.environ[SERVER_API_ENV_KEY] = api_key
+
+    if ayon_api.create_connection() is False:
+        raise RuntimeError("Could not connect to server.")
+
+    con = ayon_api.get_server_api_connection()
+    print("--- Available bundles ---")
+    for bundle_name in sorted(get_bundles(con)):
+        print(bundle_name)
+    print("-------------------------")
 
 
 def main():
