@@ -129,9 +129,9 @@ def get_installer_toml(installer):
             }
         },
         "ayon": {
-            "runtimeDependencies": {
-                copy.deepcopy(installer["runtimePythonModules"])
-            }
+            "runtimeDependencies": copy.deepcopy(
+                installer["runtimePythonModules"]
+            )
         }
     }
 
