@@ -23,6 +23,7 @@ function Default-Func {
     Write-Host "  set_env                       Set all env vars in .env file."
     Write-Host "  listen                        Start listener on a server."
     Write-Host "  create                        Create dependency package for single bundle."
+    Write-Host "  list-bundles                  List bundles available on server."
     Write-Host ""
 }
 
@@ -111,6 +112,10 @@ function main {
         Change-Cwd
         set_env
         & "$env:POETRY_HOME\bin\poetry" run python "$($repo_root)\dependencies" create @arguments
+    } elseif ($FunctionName -eq "listbundles") {
+        Change-Cwd
+        set_env
+        & "$env:POETRY_HOME\bin\poetry" run python "$($repo_root)\dependencies" list-bundles @arguments
     } else {
         Write-Host "Unknown function \"$FunctionName\""
         Default-Func

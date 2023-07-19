@@ -178,7 +178,14 @@ listen () {
 
 create_bundle() {
   pushd "$repo_root" > /dev/null || return > /dev/null
+  set_env
   "$POETRY_HOME/bin/poetry" run python "$repo_root/dependencies" create "$@"
+}
+
+list_bundles() {
+  pushd "$repo_root" > /dev/null || return > /dev/null
+  set_env
+  "$POETRY_HOME/bin/poetry" run python "$repo_root/dependencies" list-bundles "$@"
 }
 
 default_help() {
@@ -192,6 +199,7 @@ default_help() {
   echo "  set_env                       Set all env vars in .env file."
   echo "  listen                        Start listener on a server."
   echo "  create                        Create dependency package for single bundle."
+  echo "  list-bundles                  List bundles available on server."
   echo ""
 }
 
@@ -224,6 +232,10 @@ main() {
       ;;
     "create")
       create_bundle "${@:2}" || return_code=$?
+      exit $return_code
+      ;;
+    "listbundles")
+      list_bundles "${@:2}" || return_code=$?
       exit $return_code
       ;;
   esac
