@@ -155,11 +155,7 @@ install () {
   # cx_freeze will crash on missing __pychache__ on these but
   # reinstalling them solves the problem.
   echo -e "${BIGreen}>>>${RST} Post-venv creation fixes ..."
-  local openpype_index=$("$POETRY_HOME/bin/poetry" run python "$repo_root/tools/parse_pyproject.py" tool.poetry.source.0.url)
-  echo -e "${BIGreen}-   ${RST} Using index: ${BIWhite}$openpype_index${RST}"
   "$POETRY_HOME/bin/poetry" run python -m pip install --disable-pip-version-check --force-reinstall pip
-  echo -e "${BIGreen}>>>${RST} Installing pre-commit hooks ..."
-  "$POETRY_HOME/bin/poetry" run pre-commit install
 }
 
 set_env () {
