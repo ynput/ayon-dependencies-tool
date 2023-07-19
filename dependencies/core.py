@@ -6,12 +6,12 @@ import platform
 import hashlib
 import zipfile
 import json
-import attr
 import subprocess
 import collections
 import shutil
 from typing import Dict, Union
 from packaging import version
+from dataclasses import dataclass
 
 import toml
 from poetry.core.constraints.version import parse_constraint
@@ -27,12 +27,12 @@ from .utils import (
 )
 
 
-@attr.s
+@dataclass
 class Bundle:
-    name: str = attr.ib()
-    addons: Dict[str, str] = attr.ib()
-    dependency_packages: Dict[str, str] = attr.ib()
-    installer_version: Union[str, None] = attr.ib()
+    name: str
+    addons: Dict[str, str]
+    dependency_packages: Dict[str, str]
+    installer_version: Union[str, None]
 
 
 def get_bundles(con):

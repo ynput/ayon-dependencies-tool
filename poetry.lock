@@ -24,18 +24,6 @@ files = [
 ]
 
 [[package]]
-name = "attr"
-version = "0.3.2"
-description = "Simple decorator to set attributes of target function or class in a DRY way."
-category = "main"
-optional = false
-python-versions = "*"
-files = [
-    {file = "attr-0.3.2-py2.py3-none-any.whl", hash = "sha256:4f4bffeea8c27387bde446675a7ac24f3b8fea1075f12d849b5f5c5181fc8336"},
-    {file = "attr-0.3.2.tar.gz", hash = "sha256:1ceebca768181cdcce9827611b1d728e592be5d293911539ea3d0b0bfa1146f4"},
-]
-
-[[package]]
 name = "attrs"
 version = "23.1.0"
 description = "Classes Without Boilerplate"
@@ -1598,4 +1586,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9,<4.0"
-content-hash = "2beef451c1615511fa22bfa2e67d57e1c1113ff99684fc44e548cfcbaef544ad"
+content-hash = "82071c210eda5f1116489eeefabd20f004db358db7bf258515b0712f730a20c5"
