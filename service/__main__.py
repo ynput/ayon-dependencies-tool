@@ -1,20 +1,16 @@
-import sys
-import os
+"""Launch listener locally for testing purposes.
 
-code_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, code_dir)
+This script will add 'dependencies' to 'sys.path' to be able to launch listener.
+"""
+
+import os
+import sys
+
+repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, repo_root)
 
 import listener
 
 
 if __name__ == "__main__":
-    # << for development only
-    with open("../.env") as fp:
-        for line in fp:
-            if not line:
-                continue
-            key, value = line.split("=")
-            os.environ[key] = value.strip()
-    # >>
-    listener = listener.DependenciesToolListener()
-    sys.exit(listener.start_listening())
+    listener.main()
