@@ -1,8 +1,13 @@
-import sys
-import os
+"""Launch listener locally for testing purposes.
 
-code_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, code_dir)
+This script will add 'dependencies' to 'sys.path' to be able to launch listener.
+"""
+
+import os
+import sys
+
+repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, repo_root)
 
 import listener
 
