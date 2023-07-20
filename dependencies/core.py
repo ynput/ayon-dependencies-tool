@@ -638,7 +638,12 @@ def stored_package_to_dir(
         os.makedirs(output_dir)
 
     new_package_data = copy.deepcopy(package_data)
+    # Change data to match server requirements
+    new_package_data["platform"] = new_package_data.pop("platform_name")
+    new_package_data["size"] = new_package_data.pop("file_size")
+    # Add bundle name as information
     new_package_data["bundle_name"] = bundle.name
+
     filename = new_package_data["filename"]
     output_path = os.path.join(output_dir, filename)
     shutil.copy(venv_zip_path, output_path)
