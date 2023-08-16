@@ -158,12 +158,13 @@ install () {
 }
 
 set_env () {
-  # Set environments
-  set -o allexport
-  source "${repo_root}/.env"
-  set +o allexport
-  # Print out values
-  cat file.txt | xargs echo
+  env_path="${repo_root}/.env"
+  if [ -f $env_path ]; then
+    # Set environments
+    set -o allexport
+    source "${env_path}"
+    set +o allexport
+  fi
 }
 
 listen () {
