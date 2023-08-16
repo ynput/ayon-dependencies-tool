@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 # Colors for terminal
 RST='\033[0m'             # Text Reset
 
