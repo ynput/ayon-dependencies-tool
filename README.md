@@ -10,7 +10,7 @@ Then it uses Poetry to create new venv, zips it and provides this to AYON server
 
 It is expected to run on machine that has set reasonable development environment.
 
-`./.env` must be created with filled env vars:
+`.env` must be created with filled variables (you can use prepared skeleton `.env` in root of the repo):
 - AYON_API_KEY=api key for service account from AYON Server
 - AYON_SERVER_URL=Ayon server tool should communicate with
 
