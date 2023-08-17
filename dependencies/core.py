@@ -43,12 +43,16 @@ def get_bundles(con):
     """
     bundles_by_name = {}
     for bundle_dict in con.get_bundles()["bundles"]:
-        bundle = Bundle(
-            name=bundle_dict["name"],
-            installer_version=bundle_dict["installerVersion"],
-            addons=bundle_dict["addons"],
-            dependency_packages=bundle_dict["dependencyPackages"],
-        )
+        try:
+            bundle = Bundle(
+                name=bundle_dict["name"],
+                installer_version=bundle_dict["installerVersion"],
+                addons=bundle_dict["addons"],
+                dependency_packages=bundle_dict["dependencyPackages"],
+            )
+        except KeyError:
+            print(f"Wrong bundle definition for {bundle_dict['name']}")
+            continue
         bundles_by_name[bundle.name] = bundle
     return bundles_by_name
 
