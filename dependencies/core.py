@@ -485,13 +485,13 @@ def zip_venv(venv_folder, zip_filepath):
                 if root_name == "__pycache__":
                     continue
 
-                dst_root = ""
+                dst_root = "dependencies"
                 if len(root) > sp_root_len_start:
-                    dst_root = root[sp_root_len_start:]
+                    dst_root = os.path.join(dst_root, root[sp_root_len_start:])
 
                 for filename in filenames:
                     src_path = os.path.join(root, filename)
-                    dst_path = os.path.join("dependencies", dst_root, filename)
+                    dst_path = os.path.join(dst_root, filename)
                     zipf.write(src_path, dst_path)
 
 
