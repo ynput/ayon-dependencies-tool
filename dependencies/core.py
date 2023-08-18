@@ -187,8 +187,12 @@ def get_bundle_addons_tomls(con, bundle):
 
 
 def find_installer_by_name(con, bundle_name, installer_name):
+    platform_name = platform.system().lower()
     for installer in con.get_installers()["installers"]:
-        if installer["version"] == installer_name:
+        if (
+            installer["platform"] == platform_name
+            and installer["version"] == installer_name
+        ):
             return installer
     raise ValueError(f"{bundle_name} must have installer present.")
 
