@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dependencies-tool"
-version = "0.0.1"
+version = "0.1.0"
 description = "Dependencies tool for Ayon"
 authors = ["Petr Kalis <petr.kalis@ynput.com>"]
 
