@@ -686,9 +686,18 @@ def get_python_modules(venv_path):
     return packages
 
 
-def calculate_hash(file_url):
-    checksum = hashlib.md5()
-    with open(file_url, "rb") as f:
+def calculate_hash(filepath):
+    """Calculate sha256 hash of file.
+
+    Args:
+        filepath (str): Path to a file.
+
+    Returns:
+        str: File sha256 hashs.
+    """
+
+    checksum = hashlib.sha256()
+    with open(filepath, "rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
             checksum.update(chunk)
     return checksum.hexdigest()
@@ -720,7 +729,7 @@ def prepare_package_data(venv_zip_path, bundle):
         "source_addons": bundle.addons,
         "installer_version": bundle.installer_version,
         "checksum": checksum,
-        "checksum_algorithm": "md5",
+        "checksum_algorithm": "sha256",
         "file_size": os.stat(venv_zip_path).st_size,
         "platform_name": platform_name,
     }
