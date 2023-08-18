@@ -283,11 +283,15 @@ def merge_tomls(main_toml, addon_toml, addon_name):
         ValueError if any tuple of main and addon dependency cannot be resolved
     """
 
-    dependency_keyes = ["dependencies", "dev-dependencies"]
-    for key in dependency_keyes:
-        main_poetry = main_toml["tool"]["poetry"].get(key) or {}
-        addon_poetry = addon_toml["tool"]["poetry"].get(key) or {}
+    dependency_keys = ["dependencies", "dev-dependencies"]
+    for key in dependency_keys:
+        main_poetry = main_toml["tool"]["poetry"].setdefault(key, {})
+        addon_poetry = addon_toml["tool"]["poetry"].get(key)
+        if not addon_poetry:
+            continue
+
         for dependency, dep_version in addon_poetry.items():
+            dep_version = _convert_poetry_version(dep_version)
             if main_poetry.get(dependency):
                 main_version = main_poetry[dependency]
                 resolved_vers = _get_correct_version(main_version, dep_version)
@@ -306,8 +310,6 @@ def merge_tomls(main_toml, addon_toml, addon_name):
                 )
 
             main_poetry[dependency] = resolved_vers
-
-        main_toml["tool"]["poetry"][key] = main_poetry
 
     # handle runtime dependencies
     platform_name = platform.system().lower()
