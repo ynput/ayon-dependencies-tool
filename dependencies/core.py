@@ -80,9 +80,10 @@ def get_pyenv_arguments(output_root, python_version):
     if not pyenv_path:
         return
     print(f"Installing Python {python_version} with pyenv")
-    result = subprocess.run(
-        [pyenv_path, "install", python_version, "--quiet", "--skip-existing"]
-    )
+    install_args = [pyenv_path, "install", python_version, "--skip-existing"]
+    if platform.system().lower() == "windows":
+        install_args.append("--quiet")
+    result = subprocess.run(install_args)
     if result.returncode != 0:
         raise RuntimeError(f"Failed to install python {python_version}")
     subprocess.run(
