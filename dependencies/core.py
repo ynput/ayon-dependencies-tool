@@ -217,11 +217,13 @@ def get_installer_toml(installer):
         dict[str, Any]: Installer toml content.
     """
 
+    python_modules = copy.deepcopy(installer["pythonModules"])
+    python_modules["python"] = installer["pythonVersion"]
     return {
         "tool": {
             "poetry": {
                 # Create copy to avoid modifying original data
-                "dependencies": copy.deepcopy(installer["pythonModules"]),
+                "dependencies": python_modules,
 
                 # These data have no effect, but are required by poetry
                 "name": "AYONDepPackage",
