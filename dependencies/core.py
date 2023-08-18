@@ -516,8 +516,8 @@ def prepare_new_venv(full_toml_data, output_root, python_version):
 
     _convert_url_constraints(full_toml_data)
 
-    with open(toml_path, "w") as fp:
-        fp.write(toml.dumps(full_toml_data))
+    with open(toml_path, "w") as stream:
+        toml.dump(full_toml_data, stream)
 
     poetry_bin = os.path.join(poetry_home, "bin", "poetry")
     venv_path = os.path.join(output_root, ".venv")
