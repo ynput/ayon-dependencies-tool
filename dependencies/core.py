@@ -409,6 +409,35 @@ def get_full_toml(base_toml_data, addon_tomls):
         (dict) updated base .toml
     """
 
+    # Fix git sources of installer dependencies
+    main_poetry_tool = base_toml_data["tool"]["poetry"]
+    main_dependencies = main_poetry_tool["dependencies"]
+    modified_dependencies = {}
+    for key, value in main_dependencies.items():
+        if not isinstance(value, str):
+            continue
+
+        if not is_url(value) and not value.startswith("git+http"):
+            continue
+
+        new_value = None
+        link = Link(value)
+        # TODO handler other version-less contraints
+        if link.scheme.startswith("git+"):
+            url = ParsedUrl.parse(link.url)
+            new_value = {"git": url.url,}
+            if url.rev:
+                new_value["rev"] = url.rev
+
+        elif link.scheme == "git":
+            new_value = {
+                "git": link.url_without_fragment
+            }
+
+        modified_dependencies[key] = new_value
+    main_dependencies.update(modified_dependencies)
+
+    # Merge addon dependencies
     for addon_name, addon_toml_data in addon_tomls.items():
         if isinstance(addon_toml_data, str):
             addon_toml_data = toml.loads(addon_toml_data)
