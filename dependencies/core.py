@@ -203,7 +203,7 @@ def merge_tomls(main_toml, addon_toml, addon_name):
             if resolved_vers == "<empty>":
                 raise ValueError(
                     f"Version {dep_version} cannot be resolved against"
-                    f" {main_version} for {addon_name}"
+                    f" {main_version} for {dependency} in {addon_name}"
                 )
 
             main_poetry[dependency] = resolved_vers
