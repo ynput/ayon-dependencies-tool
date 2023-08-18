@@ -15,7 +15,15 @@ from dataclasses import dataclass
 
 import toml
 import requests
-from poetry.core.constraints.version import parse_constraint
+from poetry.core.constraints.version import (
+    parse_constraint,
+    EmptyConstraint,
+    VersionConstraint,
+    VersionRangeConstraint,
+)
+from poetry.core.packages.utils.link import Link
+from poetry.core.packages.utils.utils import is_url
+from poetry.core.vcs.git import ParsedUrl
 
 import ayon_api
 from ayon_api import create_dependency_package_basename
@@ -27,6 +35,16 @@ from .utils import (
     get_venv_site_packages,
 )
 
+ConstraintClasses = (
+    EmptyConstraint,
+    VersionConstraint,
+    VersionRangeConstraint,
+)
+ConstraintClassesHint = Union[
+    EmptyConstraint,
+    VersionConstraint,
+    VersionRangeConstraint
+]
 POETRY_VERSION = "1.3.2"
 
 
@@ -275,7 +293,6 @@ def merge_tomls(main_toml, addon_toml, addon_name):
 
     Handles sections:
         - ["tool"]["poetry"]["dependencies"]
-        - ["tool"]["poetry"]["dev-dependencies"]
         - ["ayon"]["runtimeDependencies"]
 
     Returns:
@@ -285,7 +302,7 @@ def merge_tomls(main_toml, addon_toml, addon_name):
         ValueError if any tuple of main and addon dependency cannot be resolved
     """
 
-    dependency_keys = ["dependencies", "dev-dependencies"]
+    dependency_keys = ["dependencies"]
     for key in dependency_keys:
         main_poetry = main_toml["tool"]["poetry"].setdefault(key, {})
         addon_poetry = addon_toml["tool"]["poetry"].get(key)
@@ -293,19 +310,15 @@ def merge_tomls(main_toml, addon_toml, addon_name):
             continue
 
         for dependency, dep_version in addon_poetry.items():
-            dep_version = _convert_poetry_version(dep_version)
-            if main_poetry.get(dependency):
-                main_version = main_poetry[dependency]
-                resolved_vers = _get_correct_version(main_version, dep_version)
-            else:
+            main_version = main_poetry.get(dependency)
+            resolved_vers = _get_correct_version(main_version, dep_version)
+            if not main_version:
                 main_version = "N/A"
-                resolved_vers = dep_version
 
-            resolved_vers = str(resolved_vers)
-            if dependency == "python":
-                resolved_vers = "3.9.*"  # TEMP TODO
-
-            if resolved_vers == "<empty>":
+            if (
+                isinstance(resolved_vers, ConstraintClasses)
+                and resolved_vers.is_empty()
+            ):
                 raise ValueError(
                     f"Version {dep_version} cannot be resolved against"
                     f" {main_version} for {dependency} in {addon_name}"
@@ -331,10 +344,13 @@ def merge_tomls(main_toml, addon_toml, addon_name):
                 dep_version = dep_info["version"]
                 main_version = main_poetry[dependency]["version"]
 
-            result_range = _get_correct_version(main_version, dep_version)
+            resolved_vers = _get_correct_version(main_version, dep_version)
+            if not isinstance(resolved_vers, ConstraintClasses):
+                raise ValueError(
+                    "RuntimeDependency must be defined as version.")
             if (
-                str(result_range) != "<empty>"
-                and parse_constraint(dep_version).allows(result_range)
+                not resolved_vers.is_empty()
+                and parse_constraint(dep_version).allows(resolved_vers)
             ):
                 dep_info = main_poetry[dependency]
             else:
@@ -352,32 +368,44 @@ def merge_tomls(main_toml, addon_toml, addon_name):
 def _get_correct_version(main_version, dep_version):
     """Return resolved version from two version (constraint).
 
+    Warning:
+        This function does not resolve if there are 2 sources of same
+            module without version specification but with different source.
+            e.g. git, url or path.
+        In case this case happens first available source is used.
+
     Args:
-        main_version (str): version or constraint ("3.6.1", "^3.7")
-        dep_version (str): dtto
+        main_version (Union[str, dict, ConstraintClassesHint]): Version
+            or constraint ("3.6.1", "^3.7")
+        dep_version (Union[str, dict]): New dependency that should be merged.
 
     Returns:
-        (VersionRange| EmptyConstraint if cannot be resolved)
+        Union[ConstraintClassesHint, dict]: Constraint or dict.
     """
 
-    if isinstance(dep_version, dict):
-        dep_version = dep_version["version"]
-    if isinstance(main_version, dict):
-        main_version = main_version["version"]
-    if dep_version and _is_url_constraint(dep_version):
-        # custom location for addon should take precedence
-        return dep_version
+    # TODO find out how poetry handles multile dependencies defined with
+    #   different constraints
 
-    if main_version and _is_url_constraint(main_version):
+    if main_version and isinstance(main_version, dict):
         return main_version
 
     if not main_version:
-        return parse_constraint(dep_version)
+        if isinstance(dep_version, str):
+            dep_version = parse_constraint(dep_version)
+        return dep_version
+
+    if isinstance(main_version, str):
+        main_version = parse_constraint(main_version)
+
     if not dep_version:
-        return parse_constraint(main_version)
-    return parse_constraint(dep_version).intersect(
-        parse_constraint(main_version)
-    )
+        return main_version
+
+    if isinstance(dep_version, str):
+        dep_version = parse_constraint(dep_version)
+
+    if hasattr(dep_version, "intersect"):
+        return dep_version.intersect(main_version)
+    return main_version
 
 
 def _is_url_constraint(version):
@@ -525,24 +553,20 @@ def prepare_new_venv(full_toml_data, output_root, python_version):
 
 def _convert_url_constraints(full_toml_data):
     """Converts string occurences of "git+https" to dict required by Poetry"""
-    dependency_keyes = ["dependencies", "dev-dependencies"]
-    for key in dependency_keyes:
-        dependencies = full_toml_data["tool"]["poetry"].get(key) or {}
+    dependency_keys = ["dependencies"]
+    for key in dependency_keys:
+        dependencies = full_toml_data["tool"]["poetry"].get(key)
+        if not dependencies:
+            continue
         for dependency, dep_version in dependencies.items():
-            dep_version = str(dep_version)
-            if not _is_url_constraint(dep_version):
-                continue
-
-            try:
-                # TODO there is probably better way how to handle this
-                # Dictionary from requirements.txt contains raw string
-                # - "{'git': 'https://...'}"
-                dep_version = json.loads(dep_version.replace("'", '"'))
-            except ValueError:
-                pass
-
             if isinstance(dep_version, dict):
                 dependencies[dependency] = dep_version
+                continue
+
+            # TODO this is maybe not needed anymore
+            #   Only source of git+https should be from installer which was
+            #   created using pip freeze.
+            if not _is_url_constraint(dep_version):
                 continue
 
             revision = None
