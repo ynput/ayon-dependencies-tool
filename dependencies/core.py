@@ -444,6 +444,15 @@ def get_full_toml(base_toml_data, addon_tomls):
         base_toml_data = merge_tomls(
             base_toml_data, addon_toml_data, addon_name)
 
+    # Convert all 'ConstraintClassesHint' to 'str'
+    main_poetry_tool = base_toml_data["tool"]["poetry"]
+    main_dependencies = main_poetry_tool["dependencies"]
+    modified_dependencies = {}
+    for key, value in main_dependencies.items():
+        if not isinstance(value, (str, dict)):
+            modified_dependencies[key] = str(value)
+    main_dependencies.update(modified_dependencies)
+
     return base_toml_data
 
 
