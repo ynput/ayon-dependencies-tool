@@ -146,7 +146,7 @@ def get_all_addon_tomls(con):
     """Provides list of dict containing addon tomls.
 
     Returns:
-        (dict) of (dict)
+        dict[str, dict[str, Any]]: All addon toml files.
     """
 
     tomls = {}
@@ -214,7 +214,14 @@ def get_installer_toml(installer):
         "tool": {
             "poetry": {
                 # Create copy to avoid modifying original data
-                "dependencies": copy.deepcopy(installer["pythonModules"])
+                "dependencies": copy.deepcopy(installer["pythonModules"]),
+
+                # These data have no effect, but are required by poetry
+                "name": "AYONDepPackage",
+                "version": "1.0.0",
+                "description": "Dependency package for AYON",
+                "authors": ["Ynput s.r.o. <info@openpype.io>"],
+                "license": "MIT License",
             }
         },
         "ayon": {
@@ -334,7 +341,7 @@ def merge_tomls(main_toml, addon_toml, addon_name):
 def _get_correct_version(main_version, dep_version):
     """Return resolved version from two version (constraint).
 
-    Arg:
+    Args:
         main_version (str): version or constraint ("3.6.1", "^3.7")
         dep_version (str): dtto
 
@@ -402,58 +409,70 @@ def get_full_toml(base_toml_data, addon_tomls):
     return base_toml_data
 
 
-def prepare_new_venv(full_toml_data, venv_folder):
+def prepare_new_venv(full_toml_data, output_root, python_version):
     """Let Poetry create new venv in 'venv_folder' from 'full_toml_data'.
 
     Args:
         full_toml_data (dict): toml representation calculated based on basic
-            .toml + all addon tomls
-        venv_folder (str): path where venv should be created
+            .toml + all addon tomls.
+        output_root (str): Path where venv should be created.
+        python_version (str): Python version that should be used.
 
     Raises:
         RuntimeError: Exception is raised if process finished with nonzero
             return code.
     """
 
-    toml_path = os.path.join(venv_folder, "pyproject.toml")
-    tool_poetry = {
-        "name": "AYONDepPackage",
-        "version": "1.0.0",
-        "description": "Dependency package for AYON",
-        "authors": ["Ynput s.r.o. <info@openpype.io>"],
-        "license": "MIT License",
-    }
-    full_toml_data["tool"]["poetry"].update(tool_poetry)
+    print(f"Preparing new venv in {output_root}")
+
+    python_args = get_python_arguments(output_root, python_version)
+
+    poetry_script = get_poetry_install_script()
+    poetry_home = os.path.join(output_root, ".poetry")
+    env = dict(os.environ.items())
+    env["POETRY_VERSION"] = POETRY_VERSION
+    env["POETRY_HOME"] = poetry_home
+    # Create poetry in output root
+    subprocess.call(python_args + [poetry_script], env=env, cwd=output_root)
+
+    toml_path = os.path.join(output_root, "pyproject.toml")
 
     _convert_url_constraints(full_toml_data)
 
     with open(toml_path, "w") as fp:
         fp.write(toml.dumps(full_toml_data))
 
-    poetry_bin = os.path.join(os.getenv("POETRY_HOME"), "bin", "poetry")
-    venv_path = os.path.join(venv_folder, ".venv")
-    env = dict(os.environ.items())
+    poetry_bin = os.path.join(poetry_home, "bin", "poetry")
+    venv_path = os.path.join(output_root, ".venv")
+
+    # Create venv using poetry
     run_subprocess(
         [poetry_bin, "run", "python", "-m", "venv", venv_path],
-        env=env
+        env=env,
+        cwd=output_root
     )
     env["VIRTUAL_ENV"] = venv_path
-    for cmd in (
-        [poetry_bin, "config", "virtualenvs.create", "false", "--local"],
-        [poetry_bin, "config", "virtualenvs.in-project", "false", "--local"],
+    # Change poetry config to ignore venv in poetry
+    for config_key, config_value in (
+        ("virtualenvs.create", "false"),
+        ("virtualenvs.in-project", "false"),
     ):
-        run_subprocess(cmd, env=env)
+        run_subprocess(
+            [poetry_bin, "config", config_key, config_value, "--local"],
+            env=env,
+            cwd=output_root
+        )
 
-    run_subprocess(
-        [poetry_bin, "config", "--list"],
-        env=env,
-        cwd=venv_path
-    )
-    return run_subprocess(
+    # Install dependencies from pyproject.toml
+    return_code = run_subprocess(
         [poetry_bin, "install", "--no-root", "--ansi"],
         env=env,
         cwd=venv_path
     )
+    if return_code != 0:
+        raise RuntimeError(f"Preparation of {venv_path} failed!")
+    return venv_path
+
 
 def _convert_url_constraints(full_toml_data):
     """Converts string occurences of "git+https" to dict required by Poetry"""
@@ -580,30 +599,23 @@ def zip_venv(venv_folder, zip_filepath):
                     zipf.write(src_path, dst_path)
 
 
-def prepare_zip_venv(tmpdir):
+def prepare_zip_venv(venv_path, output_root):
     """Handles creation of zipped venv.
 
     Args:
-        tmpdir (str): temp folder path
+        venv_path (str): Path to created venv.
+        output_root (str): Temp folder path.
 
     Returns:
         (str) path to zipped venv
     """
 
     zip_file_name = f"{create_dependency_package_basename()}.zip"
-    venv_zip_path = os.path.join(tmpdir, zip_file_name)
+    venv_zip_path = os.path.join(output_root, zip_file_name)
     print(f"Zipping new venv to {venv_zip_path}")
-    zip_venv(os.path.join(tmpdir, ".venv"), venv_zip_path)
+    zip_venv(venv_path, venv_zip_path)
 
     return venv_zip_path
-
-
-def create_addons_venv(full_toml_data, tmpdir):
-    print(f"Preparing new venv in {tmpdir}")
-    return_code = prepare_new_venv(full_toml_data, tmpdir)
-    if return_code != 0:
-        raise RuntimeError(f"Preparation of {tmpdir} failed!")
-    return os.path.join(tmpdir, ".venv")
 
 
 def get_applicable_package(con, new_toml):
@@ -614,10 +626,13 @@ def get_applicable_package(con, new_toml):
     functionality)
 
     Args:
-        new_toml (dict): in a format of regular toml file
+        con (ayon_api.ServerApi): Connection to AYON server.
+        new_toml (dict[str, Any]): Data of regular pyproject.toml file.
+
     Returns:
-        (str) name of matching package
+        str: name of matching package
     """
+
     toml_python_packages = dict(
         sorted(new_toml["tool"]["poetry"]["dependencies"].items())
     )
@@ -635,8 +650,9 @@ def get_python_modules(venv_path):
     Args:
         venv_path (str): absolute path to created dependency package already
             with removed libraries from installer package
+
     Returns:
-        (dict) {'acre': '1.0.0',...}
+        dict[str, str] {'acre': '1.0.0',...}
     """
 
     pip_executable = get_venv_executable(venv_path, "pip")
@@ -684,7 +700,7 @@ def prepare_package_data(venv_zip_path, bundle):
         bundle (Bundle): Bundle object with all data.
 
     Returns:
-          dict[str, Any]: Dependency package information.
+        dict[str, Any]: Dependency package information.
     """
 
     venv_path = os.path.join(os.path.dirname(venv_zip_path), ".venv")
@@ -865,12 +881,13 @@ def _create_package(
         update_bundle_with_package(con, bundle, applicable_package)
         return applicable_package["filename"]
 
-    addons_venv_path = create_addons_venv(full_toml_data, output_root)
-
+    addons_venv_path = prepare_new_venv(
+        full_toml_data, output_root, installer["pythonVersion"]
+    )
     # remove already distributed libraries from addons specific venv
     remove_existing_from_venv(addons_venv_path, installer)
 
-    venv_zip_path = prepare_zip_venv(output_root)
+    venv_zip_path = prepare_zip_venv(addons_venv_path, output_root)
 
     package_data = prepare_package_data(venv_zip_path, bundle)
     if destination_root:
