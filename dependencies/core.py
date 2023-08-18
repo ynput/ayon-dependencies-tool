@@ -754,25 +754,9 @@ def _remove_tmpdir(tmpdir):
     return failed
 
 
-def create_package(bundle_name, con=None, output_dir=None, skip_upload=False):
-    """
-        Pulls all active addons info from server, provides their pyproject.toml
-    (if available), takes base (installer) pyproject.toml, adds tomls from
-    addons.
-    Builds new venv with dependencies only for addons (dependencies already
-    present in build are filtered out).
-    Uploads zipped venv back to server.
-
-    Args:
-        bundle_name (str): Name of bundle for which is package created.
-        con (Optional[ayon_api.ServerAPI]): Prepared server API object.
-        output_dir (Optional[str]): Path to directory where package will be
-            created.
-        skip_upload (Optional[bool]): Skip upload to server. Default: False.
-    """
-
-    if con is None:
-        con = ayon_api.get_server_api_connection()
+def _create_package(
+    bundle_name, con, skip_upload, output_root, destination_root=None
+):
     bundles_by_name = get_bundles(con)
 
     bundle = bundles_by_name.get(bundle_name)
@@ -796,31 +780,57 @@ def create_package(bundle_name, con=None, output_dir=None, skip_upload=False):
         update_bundle_with_package(con, bundle, applicable_package)
         return applicable_package["filename"]
 
-    # create resolved venv based on distributed venv with Desktop + activated
-    # addons
-    tmpdir = tempfile.mkdtemp(prefix="ayon_dep-package")
-
-    print(">>> Creating processing directory {}".format(tmpdir))
-
-    addons_venv_path = create_addons_venv(full_toml_data, tmpdir)
+    addons_venv_path = create_addons_venv(full_toml_data, output_root)
 
     # remove already distributed libraries from addons specific venv
     remove_existing_from_venv(addons_venv_path, installer)
 
-    venv_zip_path = prepare_zip_venv(tmpdir)
+    venv_zip_path = prepare_zip_venv(output_root)
 
     package_data = prepare_package_data(venv_zip_path, bundle)
-    if output_dir:
-        stored_package_to_dir(output_dir, venv_zip_path, bundle, package_data)
+    if destination_root:
+        stored_package_to_dir(
+            destination_root, venv_zip_path, bundle, package_data)
 
     if not skip_upload:
         upload_to_server(con, venv_zip_path, package_data)
         update_bundle_with_package(con, bundle, package_data)
 
-    print(">>> Cleaning up processing directory {}".format(tmpdir))
-    failed_paths = _remove_tmpdir(tmpdir)
-    if failed_paths:
-        print("Failed to cleanup tempdir: {}".format(tmpdir))
-        print("\n".join(sorted(failed_paths)))
-
     return package_data["filename"]
+
+
+def create_package(bundle_name, con=None, output_dir=None, skip_upload=False):
+    """Pulls all active addons info from server and creade dependency package.
+
+    1. Takes base (installer) pyproject.toml, and adds tomls from addons
+        pyproject.toml (if available).
+    2. Builds new venv with dependencies only for addons (dependencies already
+        present in build are filtered out).
+    3. Uploads zipped venv to server and set it to bundle.
+
+    Args:
+        bundle_name (str): Name of bundle for which is package created.
+        con (Optional[ayon_api.ServerAPI]): Prepared server API object.
+        output_dir (Optional[str]): Path to directory where package will be
+            created.
+        skip_upload (Optional[bool]): Skip upload to server. Default: False.
+    """
+
+    # create resolved venv based on distributed venv with Desktop + activated
+    # addons
+    tmpdir = tempfile.mkdtemp(prefix="ayon_dep-package")
+    print(">>> Creating processing directory {}".format(tmpdir))
+
+    try:
+        if con is None:
+            con = ayon_api.get_server_api_connection()
+        return _create_package(
+            bundle_name, con, skip_upload, tmpdir, output_dir
+        )
+
+    finally:
+        print(">>> Cleaning up processing directory {}".format(tmpdir))
+        failed_paths = _remove_tmpdir(tmpdir)
+        if failed_paths:
+            print("Failed to cleanup tempdir: {}".format(tmpdir))
+            print("\n".join(sorted(failed_paths)))
