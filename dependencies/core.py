@@ -14,7 +14,16 @@ from packaging import version
 from dataclasses import dataclass
 
 import toml
-from poetry.core.constraints.version import parse_constraint
+import requests
+from poetry.core.constraints.version import (
+    parse_constraint,
+    EmptyConstraint,
+    VersionConstraint,
+    VersionRangeConstraint,
+)
+from poetry.core.packages.utils.link import Link
+from poetry.core.packages.utils.utils import is_url
+from poetry.core.vcs.git import ParsedUrl
 
 import ayon_api
 from ayon_api import create_dependency_package_basename
@@ -26,6 +35,18 @@ from .utils import (
     get_venv_site_packages,
 )
 
+ConstraintClasses = (
+    EmptyConstraint,
+    VersionConstraint,
+    VersionRangeConstraint,
+)
+ConstraintClassesHint = Union[
+    EmptyConstraint,
+    VersionConstraint,
+    VersionRangeConstraint
+]
+POETRY_VERSION = "1.3.2"
+
 
 @dataclass
 class Bundle:
@@ -33,6 +54,91 @@ class Bundle:
     addons: Dict[str, str]
     dependency_packages: Dict[str, str]
     installer_version: Union[str, None]
+
+
+def get_poetry_install_script():
+    """Get Poetry install script path.
+
+    Script is cached in downloads folder. If script is not cached ye, it
+        will be downloaded.
+
+    Returns:
+        str: Path to poetry install script.
+    """
+
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    downloads_dir = os.path.join(current_dir, "downloads")
+    if not os.path.exists(downloads_dir):
+        os.makedirs(downloads_dir)
+    poetry_script_path = os.path.join(
+        downloads_dir, f"poetry-install-script.py")
+    if os.path.exists(poetry_script_path):
+        return poetry_script_path
+    response = requests.get("https://install.python-poetry.org")
+    with open(poetry_script_path, "wb") as stream:
+        stream.write(response.content)
+    return poetry_script_path
+
+
+def get_pyenv_arguments(output_root, python_version):
+    """Use pyenv to install python version and use for venv creation.
+
+    Usage of pyenv is ideal as it allows to properly install runtime
+        dependencies.
+
+    Args:
+        output_root (str): Path to processing root.
+        python_version (str): Python version to install.
+
+    Returns:
+        Union[list[str], None]: List of arguments for subprocess or None.
+    """
+
+    pyenv_path = shutil.which("pyenv")
+    if not pyenv_path:
+        return
+    print(f"Installing Python {python_version} with pyenv")
+    install_args = [pyenv_path, "install", python_version, "--skip-existing"]
+    if platform.system().lower() == "windows":
+        install_args.append("--quiet")
+    result = subprocess.run(install_args)
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to install python {python_version}")
+    subprocess.run(
+        [pyenv_path, "local", python_version],
+        cwd=output_root
+    )
+    output = subprocess.check_output([pyenv_path, "which", "python"])
+    python_path = output.decode().strip()
+    return [python_path]
+
+
+def get_python_arguments(output_root, python_version):
+    """Get arguments to run python.
+
+    By default, is trying to use 'pyenv' to install python version and use
+        it for venv creation. If 'pyenv' is not available, it will use
+        system python.
+
+    Args:
+        output_root (str): Path to processing root.
+        python_version (str): Python version to install.
+
+    Returns:
+        list[str]: List of arguments for subprocess.
+    """
+
+    args = get_pyenv_arguments(output_root, python_version)
+    if args is not None:
+        return args
+    print(
+        "Failed to use pyenv. Using system python, this may cause that"
+        " package will be incompatible package with installer."
+    )
+    python_path = shutil.which("python3")
+    if not python_path:
+        python_path = shutil.which("python")
+    return [python_path]
 
 
 def get_bundles(con):
@@ -61,7 +167,7 @@ def get_all_addon_tomls(con):
     """Provides list of dict containing addon tomls.
 
     Returns:
-        (dict) of (dict)
+        dict[str, dict[str, Any]]: All addon toml files.
     """
 
     tomls = {}
@@ -102,8 +208,12 @@ def get_bundle_addons_tomls(con, bundle):
 
 
 def find_installer_by_name(con, bundle_name, installer_name):
+    platform_name = platform.system().lower()
     for installer in con.get_installers()["installers"]:
-        if installer["version"] == installer_name:
+        if (
+            installer["platform"] == platform_name
+            and installer["version"] == installer_name
+        ):
             return installer
     raise ValueError(f"{bundle_name} must have installer present.")
 
@@ -125,11 +235,20 @@ def get_installer_toml(installer):
         dict[str, Any]: Installer toml content.
     """
 
+    python_modules = copy.deepcopy(installer["pythonModules"])
+    python_modules["python"] = installer["pythonVersion"]
     return {
         "tool": {
             "poetry": {
                 # Create copy to avoid modifying original data
-                "dependencies": copy.deepcopy(installer["pythonModules"])
+                "dependencies": python_modules,
+
+                # These data have no effect, but are required by poetry
+                "name": "AYONDepPackage",
+                "version": "1.0.0",
+                "description": "Dependency package for AYON",
+                "authors": ["Ynput s.r.o. <info@openpype.io>"],
+                "license": "MIT License",
             }
         },
         "ayon": {
@@ -174,7 +293,6 @@ def merge_tomls(main_toml, addon_toml, addon_name):
 
     Handles sections:
         - ["tool"]["poetry"]["dependencies"]
-        - ["tool"]["poetry"]["dev-dependencies"]
         - ["ayon"]["runtimeDependencies"]
 
     Returns:
@@ -184,31 +302,29 @@ def merge_tomls(main_toml, addon_toml, addon_name):
         ValueError if any tuple of main and addon dependency cannot be resolved
     """
 
-    dependency_keyes = ["dependencies", "dev-dependencies"]
-    for key in dependency_keyes:
-        main_poetry = main_toml["tool"]["poetry"].get(key) or {}
-        addon_poetry = addon_toml["tool"]["poetry"].get(key) or {}
+    dependency_keys = ["dependencies"]
+    for key in dependency_keys:
+        main_poetry = main_toml["tool"]["poetry"].setdefault(key, {})
+        addon_poetry = addon_toml["tool"]["poetry"].get(key)
+        if not addon_poetry:
+            continue
+
         for dependency, dep_version in addon_poetry.items():
-            if main_poetry.get(dependency):
-                main_version = main_poetry[dependency]
-                resolved_vers = _get_correct_version(main_version, dep_version)
-            else:
+            main_version = main_poetry.get(dependency)
+            resolved_vers = _get_correct_version(main_version, dep_version)
+            if not main_version:
                 main_version = "N/A"
-                resolved_vers = dep_version
 
-            resolved_vers = str(resolved_vers)
-            if dependency == "python":
-                resolved_vers = "3.9.*"  # TEMP TODO
-
-            if resolved_vers == "<empty>":
+            if (
+                isinstance(resolved_vers, ConstraintClasses)
+                and resolved_vers.is_empty()
+            ):
                 raise ValueError(
                     f"Version {dep_version} cannot be resolved against"
                     f" {main_version} for {dependency} in {addon_name}"
                 )
 
             main_poetry[dependency] = resolved_vers
-
-        main_toml["tool"]["poetry"][key] = main_poetry
 
     # handle runtime dependencies
     platform_name = platform.system().lower()
@@ -228,10 +344,13 @@ def merge_tomls(main_toml, addon_toml, addon_name):
                 dep_version = dep_info["version"]
                 main_version = main_poetry[dependency]["version"]
 
-            result_range = _get_correct_version(main_version, dep_version)
+            resolved_vers = _get_correct_version(main_version, dep_version)
+            if not isinstance(resolved_vers, ConstraintClasses):
+                raise ValueError(
+                    "RuntimeDependency must be defined as version.")
             if (
-                str(result_range) != "<empty>"
-                and parse_constraint(dep_version).allows(result_range)
+                not resolved_vers.is_empty()
+                and parse_constraint(dep_version).allows(resolved_vers)
             ):
                 dep_info = main_poetry[dependency]
             else:
@@ -249,32 +368,44 @@ def merge_tomls(main_toml, addon_toml, addon_name):
 def _get_correct_version(main_version, dep_version):
     """Return resolved version from two version (constraint).
 
-    Arg:
-        main_version (str): version or constraint ("3.6.1", "^3.7")
-        dep_version (str): dtto
+    Warning:
+        This function does not resolve if there are 2 sources of same
+            module without version specification but with different source.
+            e.g. git, url or path.
+        In case this case happens first available source is used.
+
+    Args:
+        main_version (Union[str, dict, ConstraintClassesHint]): Version
+            or constraint ("3.6.1", "^3.7")
+        dep_version (Union[str, dict]): New dependency that should be merged.
 
     Returns:
-        (VersionRange| EmptyConstraint if cannot be resolved)
+        Union[ConstraintClassesHint, dict]: Constraint or dict.
     """
 
-    if isinstance(dep_version, dict):
-        dep_version = dep_version["version"]
-    if isinstance(main_version, dict):
-        main_version = main_version["version"]
-    if dep_version and _is_url_constraint(dep_version):
-        # custom location for addon should take precedence
-        return dep_version
+    # TODO find out how poetry handles multile dependencies defined with
+    #   different constraints
 
-    if main_version and _is_url_constraint(main_version):
+    if main_version and isinstance(main_version, dict):
         return main_version
 
     if not main_version:
-        return parse_constraint(dep_version)
+        if isinstance(dep_version, str):
+            dep_version = parse_constraint(dep_version)
+        return dep_version
+
+    if isinstance(main_version, str):
+        main_version = parse_constraint(main_version)
+
     if not dep_version:
-        return parse_constraint(main_version)
-    return parse_constraint(dep_version).intersect(
-        parse_constraint(main_version)
-    )
+        return main_version
+
+    if isinstance(dep_version, str):
+        dep_version = parse_constraint(dep_version)
+
+    if hasattr(dep_version, "intersect"):
+        return dep_version.intersect(main_version)
+    return main_version
 
 
 def _is_url_constraint(version):
@@ -308,88 +439,134 @@ def get_full_toml(base_toml_data, addon_tomls):
         (dict) updated base .toml
     """
 
+    # Fix git sources of installer dependencies
+    main_poetry_tool = base_toml_data["tool"]["poetry"]
+    main_dependencies = main_poetry_tool["dependencies"]
+    modified_dependencies = {}
+    for key, value in main_dependencies.items():
+        if not isinstance(value, str):
+            continue
+
+        if not is_url(value) and not value.startswith("git+http"):
+            continue
+
+        new_value = None
+        link = Link(value)
+        # TODO handler other version-less contraints
+        if link.scheme.startswith("git+"):
+            url = ParsedUrl.parse(link.url)
+            new_value = {"git": url.url,}
+            if url.rev:
+                new_value["rev"] = url.rev
+
+        elif link.scheme == "git":
+            new_value = {
+                "git": link.url_without_fragment
+            }
+
+        modified_dependencies[key] = new_value
+    main_dependencies.update(modified_dependencies)
+
+    # Merge addon dependencies
     for addon_name, addon_toml_data in addon_tomls.items():
         if isinstance(addon_toml_data, str):
             addon_toml_data = toml.loads(addon_toml_data)
         base_toml_data = merge_tomls(
             base_toml_data, addon_toml_data, addon_name)
 
+    # Convert all 'ConstraintClassesHint' to 'str'
+    main_poetry_tool = base_toml_data["tool"]["poetry"]
+    main_dependencies = main_poetry_tool["dependencies"]
+    modified_dependencies = {}
+    for key, value in main_dependencies.items():
+        if not isinstance(value, (str, dict)):
+            modified_dependencies[key] = str(value)
+    main_dependencies.update(modified_dependencies)
+
     return base_toml_data
 
 
-def prepare_new_venv(full_toml_data, venv_folder):
+def prepare_new_venv(full_toml_data, output_root, python_version):
     """Let Poetry create new venv in 'venv_folder' from 'full_toml_data'.
 
     Args:
         full_toml_data (dict): toml representation calculated based on basic
-            .toml + all addon tomls
-        venv_folder (str): path where venv should be created
+            .toml + all addon tomls.
+        output_root (str): Path where venv should be created.
+        python_version (str): Python version that should be used.
 
     Raises:
         RuntimeError: Exception is raised if process finished with nonzero
             return code.
     """
 
-    toml_path = os.path.join(venv_folder, "pyproject.toml")
-    tool_poetry = {
-        "name": "AYONDepPackage",
-        "version": "1.0.0",
-        "description": "Dependency package for AYON",
-        "authors": ["Ynput s.r.o. <info@openpype.io>"],
-        "license": "MIT License",
-    }
-    full_toml_data["tool"]["poetry"].update(tool_poetry)
+    print(f"Preparing new venv in {output_root}")
+
+    python_args = get_python_arguments(output_root, python_version)
+
+    poetry_script = get_poetry_install_script()
+    poetry_home = os.path.join(output_root, ".poetry")
+    env = dict(os.environ.items())
+    env["POETRY_VERSION"] = POETRY_VERSION
+    env["POETRY_HOME"] = poetry_home
+    # Create poetry in output root
+    subprocess.call(python_args + [poetry_script], env=env, cwd=output_root)
+
+    toml_path = os.path.join(output_root, "pyproject.toml")
 
     _convert_url_constraints(full_toml_data)
 
-    with open(toml_path, "w") as fp:
-        fp.write(toml.dumps(full_toml_data))
+    with open(toml_path, "w") as stream:
+        toml.dump(full_toml_data, stream)
 
-    poetry_bin = os.path.join(os.getenv("POETRY_HOME"), "bin", "poetry")
-    venv_path = os.path.join(venv_folder, ".venv")
-    env = dict(os.environ.items())
+    poetry_bin = os.path.join(poetry_home, "bin", "poetry")
+    venv_path = os.path.join(output_root, ".venv")
+
+    # Create venv using poetry
     run_subprocess(
         [poetry_bin, "run", "python", "-m", "venv", venv_path],
-        env=env
+        env=env,
+        cwd=output_root
     )
     env["VIRTUAL_ENV"] = venv_path
-    for cmd in (
-        [poetry_bin, "config", "virtualenvs.create", "false", "--local"],
-        [poetry_bin, "config", "virtualenvs.in-project", "false", "--local"],
+    # Change poetry config to ignore venv in poetry
+    for config_key, config_value in (
+        ("virtualenvs.create", "false"),
+        ("virtualenvs.in-project", "false"),
     ):
-        run_subprocess(cmd, env=env)
+        run_subprocess(
+            [poetry_bin, "config", config_key, config_value, "--local"],
+            env=env,
+            cwd=output_root
+        )
 
-    run_subprocess(
-        [poetry_bin, "config", "--list"],
-        env=env,
-        cwd=venv_path
-    )
-    return run_subprocess(
+    # Install dependencies from pyproject.toml
+    return_code = run_subprocess(
         [poetry_bin, "install", "--no-root", "--ansi"],
         env=env,
         cwd=venv_path
     )
+    if return_code != 0:
+        raise RuntimeError(f"Preparation of {venv_path} failed!")
+    return venv_path
+
 
 def _convert_url_constraints(full_toml_data):
     """Converts string occurences of "git+https" to dict required by Poetry"""
-    dependency_keyes = ["dependencies", "dev-dependencies"]
-    for key in dependency_keyes:
-        dependencies = full_toml_data["tool"]["poetry"].get(key) or {}
+    dependency_keys = ["dependencies"]
+    for key in dependency_keys:
+        dependencies = full_toml_data["tool"]["poetry"].get(key)
+        if not dependencies:
+            continue
         for dependency, dep_version in dependencies.items():
-            dep_version = str(dep_version)
-            if not _is_url_constraint(dep_version):
-                continue
-
-            try:
-                # TODO there is probably better way how to handle this
-                # Dictionary from requirements.txt contains raw string
-                # - "{'git': 'https://...'}"
-                dep_version = json.loads(dep_version.replace("'", '"'))
-            except ValueError:
-                pass
-
             if isinstance(dep_version, dict):
                 dependencies[dependency] = dep_version
+                continue
+
+            # TODO this is maybe not needed anymore
+            #   Only source of git+https should be from installer which was
+            #   created using pip freeze.
+            if not _is_url_constraint(dep_version):
                 continue
 
             revision = None
@@ -485,40 +662,33 @@ def zip_venv(venv_folder, zip_filepath):
                 if root_name == "__pycache__":
                     continue
 
-                dst_root = ""
+                dst_root = "dependencies"
                 if len(root) > sp_root_len_start:
-                    dst_root = root[sp_root_len_start:]
+                    dst_root = os.path.join(dst_root, root[sp_root_len_start:])
 
                 for filename in filenames:
                     src_path = os.path.join(root, filename)
-                    dst_path = os.path.join("dependencies", dst_root, filename)
+                    dst_path = os.path.join(dst_root, filename)
                     zipf.write(src_path, dst_path)
 
 
-def prepare_zip_venv(tmpdir):
+def prepare_zip_venv(venv_path, output_root):
     """Handles creation of zipped venv.
 
     Args:
-        tmpdir (str): temp folder path
+        venv_path (str): Path to created venv.
+        output_root (str): Temp folder path.
 
     Returns:
         (str) path to zipped venv
     """
 
     zip_file_name = f"{create_dependency_package_basename()}.zip"
-    venv_zip_path = os.path.join(tmpdir, zip_file_name)
+    venv_zip_path = os.path.join(output_root, zip_file_name)
     print(f"Zipping new venv to {venv_zip_path}")
-    zip_venv(os.path.join(tmpdir, ".venv"), venv_zip_path)
+    zip_venv(venv_path, venv_zip_path)
 
     return venv_zip_path
-
-
-def create_addons_venv(full_toml_data, tmpdir):
-    print(f"Preparing new venv in {tmpdir}")
-    return_code = prepare_new_venv(full_toml_data, tmpdir)
-    if return_code != 0:
-        raise RuntimeError(f"Preparation of {tmpdir} failed!")
-    return os.path.join(tmpdir, ".venv")
 
 
 def get_applicable_package(con, new_toml):
@@ -529,10 +699,13 @@ def get_applicable_package(con, new_toml):
     functionality)
 
     Args:
-        new_toml (dict): in a format of regular toml file
+        con (ayon_api.ServerApi): Connection to AYON server.
+        new_toml (dict[str, Any]): Data of regular pyproject.toml file.
+
     Returns:
-        (str) name of matching package
+        str: name of matching package
     """
+
     toml_python_packages = dict(
         sorted(new_toml["tool"]["poetry"]["dependencies"].items())
     )
@@ -550,8 +723,9 @@ def get_python_modules(venv_path):
     Args:
         venv_path (str): absolute path to created dependency package already
             with removed libraries from installer package
+
     Returns:
-        (dict) {'acre': '1.0.0',...}
+        dict[str, str] {'acre': '1.0.0',...}
     """
 
     pip_executable = get_venv_executable(venv_path, "pip")
@@ -581,9 +755,18 @@ def get_python_modules(venv_path):
     return packages
 
 
-def calculate_hash(file_url):
-    checksum = hashlib.md5()
-    with open(file_url, "rb") as f:
+def calculate_hash(filepath):
+    """Calculate sha256 hash of file.
+
+    Args:
+        filepath (str): Path to a file.
+
+    Returns:
+        str: File sha256 hashs.
+    """
+
+    checksum = hashlib.sha256()
+    with open(filepath, "rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
             checksum.update(chunk)
     return checksum.hexdigest()
@@ -599,7 +782,7 @@ def prepare_package_data(venv_zip_path, bundle):
         bundle (Bundle): Bundle object with all data.
 
     Returns:
-          dict[str, Any]: Dependency package information.
+        dict[str, Any]: Dependency package information.
     """
 
     venv_path = os.path.join(os.path.dirname(venv_zip_path), ".venv")
@@ -615,7 +798,7 @@ def prepare_package_data(venv_zip_path, bundle):
         "source_addons": bundle.addons,
         "installer_version": bundle.installer_version,
         "checksum": checksum,
-        "checksum_algorithm": "md5",
+        "checksum_algorithm": "sha256",
         "file_size": os.stat(venv_zip_path).st_size,
         "platform_name": platform_name,
     }
@@ -754,25 +937,9 @@ def _remove_tmpdir(tmpdir):
     return failed
 
 
-def create_package(bundle_name, con=None, output_dir=None, skip_upload=False):
-    """
-        Pulls all active addons info from server, provides their pyproject.toml
-    (if available), takes base (installer) pyproject.toml, adds tomls from
-    addons.
-    Builds new venv with dependencies only for addons (dependencies already
-    present in build are filtered out).
-    Uploads zipped venv back to server.
-
-    Args:
-        bundle_name (str): Name of bundle for which is package created.
-        con (Optional[ayon_api.ServerAPI]): Prepared server API object.
-        output_dir (Optional[str]): Path to directory where package will be
-            created.
-        skip_upload (Optional[bool]): Skip upload to server. Default: False.
-    """
-
-    if con is None:
-        con = ayon_api.get_server_api_connection()
+def _create_package(
+    bundle_name, con, skip_upload, output_root, destination_root=None
+):
     bundles_by_name = get_bundles(con)
 
     bundle = bundles_by_name.get(bundle_name)
@@ -796,31 +963,58 @@ def create_package(bundle_name, con=None, output_dir=None, skip_upload=False):
         update_bundle_with_package(con, bundle, applicable_package)
         return applicable_package["filename"]
 
-    # create resolved venv based on distributed venv with Desktop + activated
-    # addons
-    tmpdir = tempfile.mkdtemp(prefix="ayon_dep-package")
-
-    print(">>> Creating processing directory {}".format(tmpdir))
-
-    addons_venv_path = create_addons_venv(full_toml_data, tmpdir)
-
+    addons_venv_path = prepare_new_venv(
+        full_toml_data, output_root, installer["pythonVersion"]
+    )
     # remove already distributed libraries from addons specific venv
     remove_existing_from_venv(addons_venv_path, installer)
 
-    venv_zip_path = prepare_zip_venv(tmpdir)
+    venv_zip_path = prepare_zip_venv(addons_venv_path, output_root)
 
     package_data = prepare_package_data(venv_zip_path, bundle)
-    if output_dir:
-        stored_package_to_dir(output_dir, venv_zip_path, bundle, package_data)
+    if destination_root:
+        stored_package_to_dir(
+            destination_root, venv_zip_path, bundle, package_data)
 
     if not skip_upload:
         upload_to_server(con, venv_zip_path, package_data)
         update_bundle_with_package(con, bundle, package_data)
 
-    print(">>> Cleaning up processing directory {}".format(tmpdir))
-    failed_paths = _remove_tmpdir(tmpdir)
-    if failed_paths:
-        print("Failed to cleanup tempdir: {}".format(tmpdir))
-        print("\n".join(sorted(failed_paths)))
-
     return package_data["filename"]
+
+
+def create_package(bundle_name, con=None, output_dir=None, skip_upload=False):
+    """Pulls all active addons info from server and creade dependency package.
+
+    1. Takes base (installer) pyproject.toml, and adds tomls from addons
+        pyproject.toml (if available).
+    2. Builds new venv with dependencies only for addons (dependencies already
+        present in build are filtered out).
+    3. Uploads zipped venv to server and set it to bundle.
+
+    Args:
+        bundle_name (str): Name of bundle for which is package created.
+        con (Optional[ayon_api.ServerAPI]): Prepared server API object.
+        output_dir (Optional[str]): Path to directory where package will be
+            created.
+        skip_upload (Optional[bool]): Skip upload to server. Default: False.
+    """
+
+    # create resolved venv based on distributed venv with Desktop + activated
+    # addons
+    tmpdir = tempfile.mkdtemp(prefix="ayon_dep-package")
+    print(">>> Creating processing directory {}".format(tmpdir))
+
+    try:
+        if con is None:
+            con = ayon_api.get_server_api_connection()
+        return _create_package(
+            bundle_name, con, skip_upload, tmpdir, output_dir
+        )
+
+    finally:
+        print(">>> Cleaning up processing directory {}".format(tmpdir))
+        failed_paths = _remove_tmpdir(tmpdir)
+        if failed_paths:
+            print("Failed to cleanup tempdir: {}".format(tmpdir))
+            print("\n".join(sorted(failed_paths)))
