@@ -524,7 +524,7 @@ def prepare_new_venv(full_toml_data, output_root, python_version):
 
     # Create venv using poetry
     run_subprocess(
-        [poetry_bin, "run", "python", "-m", "venv", venv_path],
+        python_args + ["-m", "venv", venv_path],
         env=env,
         cwd=output_root
     )
@@ -1003,7 +1003,8 @@ def create_package(bundle_name, con=None, output_dir=None, skip_upload=False):
     # create resolved venv based on distributed venv with Desktop + activated
     # addons
     tmpdir = tempfile.mkdtemp(prefix="ayon_dep-package")
-    print(">>> Creating processing directory {}".format(tmpdir))
+    print(">>> Creating processing directory {} for {}".format(
+        tmpdir, bundle_name))
 
     try:
         if con is None:
