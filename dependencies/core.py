@@ -1003,8 +1003,8 @@ def create_package(bundle_name, con=None, output_dir=None, skip_upload=False):
     # create resolved venv based on distributed venv with Desktop + activated
     # addons
     tmpdir = tempfile.mkdtemp(prefix="ayon_dep-package")
-    print(">>> Creating processing directory {} or {}".format(tmpdir,
-                                                              bundle_name))
+    print(">>> Creating processing directory {} for {}".format(
+        tmpdir, bundle_name))
 
     try:
         if con is None:
