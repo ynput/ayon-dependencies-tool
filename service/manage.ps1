@@ -4,10 +4,14 @@ $arguments=@()
 if ($ARGS.Length -gt 1) {
     $arguments = $ARGS[1..($ARGS.Length - 1)]
 }
-$image = "ynput/ayon-dependencies-tool:0.0.1"
+$image = "ynput/ayon-dependencies-tool:0.0.2"
 $current_dir = Get-Location
 $script_dir_rel = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 $script_dir = (Get-Item $script_dir_rel).FullName
+
+  Write-Host $current_dir
+    Write-Host $script_dir
+    Write-Host $parent_dir
 
 function defaultfunc {
   Write-Host ""
@@ -27,9 +31,11 @@ function defaultfunc {
 function build {
   & cp -r "$current_dir/../dependencies" .
   & cp -r "$current_dir/../pyproject.toml" .
+  & cp -r "$current_dir/../.env" .
   & docker build -t $image .
   & Remove-Item -Recurse -Force "$current_dir/dependencies"
   & Remove-Item -Force "$current_dir/pyproject.toml"
+  & Remove-Item -Force "$current_dir/.env"
 }
 
 function clean {
