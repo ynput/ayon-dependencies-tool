@@ -1,0 +1,61 @@
+FROM rockylinux:9 AS builder
+ARG PYTHON_VERSION=3.9.16
+ENV PYTHONUNBUFFERED=1
+
+# update base
+RUN dnf install -y dnf-plugins-core \
+    && dnf -y update \
+    && dnf clean all
+
+RUN dnf -y install \
+        bash \
+        which \
+        git \
+        make \
+        cmake \
+        wget \
+        gcc \
+        zlib-devel \
+        bzip2 \
+        bzip2-devel \
+        readline-devel \
+        sqlite sqlite-devel \
+        openssl-devel \
+        openssl-libs \
+        tk-devel libffi-devel \
+        automake \
+        autoconf \
+        patch \
+        ncurses \
+	    ncurses-devel \
+        qt5-qtbase-devel \
+        xcb-util-wm \
+        xcb-util-renderutil \
+        pip \
+    && dnf clean all
+
+RUN curl https://pyenv.run | bash
+# ENV PYTHON_CONFIGURE_OPTS --enable-shared
+
+RUN echo 'export PATH="$HOME/.pyenv/bin:$PATH"'>> $HOME/.bashrc \
+    && echo 'eval "$(pyenv init -)"' >> $HOME/.bashrc \
+    && echo 'eval "$(pyenv virtualenv-init -)"' >> $HOME/.bashrc \
+    && echo 'eval "$(pyenv init --path)"' >> $HOME/.bashrc
+
+RUN mkdir /service
+COPY . /service
+
+WORKDIR /service
+
+RUN source $HOME/.bashrc && pyenv install ${PYTHON_VERSION} && pyenv local ${PYTHON_VERSION}
+
+RUN source $HOME/.bashrc \
+  && export POETRY_HOME="/service/.poetry" \
+  && curl -sSL https://install.python-poetry.org/ | python -
+
+ENV PATH /service/.poetry/bin:$PATH
+
+RUN poetry config virtualenvs.create true \
+ && poetry install --no-interaction --no-ansi
+
+CMD source $HOME/.bashrc && poetry run python /service/listener.py

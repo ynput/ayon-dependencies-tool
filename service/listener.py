@@ -5,10 +5,11 @@ import platform
 
 import ayon_api
 from nxtools import logging
+from nxtools import log_traceback
 
 from dependencies import create_package
 
-SOURCE_TOPIC = "bundle.updated"
+SOURCE_TOPIC = "bundle.created"
 
 
 class DependenciesToolListener:
@@ -68,8 +69,9 @@ class DependenciesToolListener:
                 description = f"{package_name} created"
                 status = "finished"
             except Exception as e:
-                status = "failed"
-                description = f"Creation of package failed\n{str(e)}"
+                status = "finished"
+                description = f"Creation of package for {bundle_name} failed\n{str(e)}"  # noqa
+                log_traceback(e)
 
             ayon_api.update_event(
                 event["id"],
