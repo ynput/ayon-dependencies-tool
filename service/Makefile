@@ -1,4 +1,4 @@
-image := ynput/ayon-dependencies-tool:0.0.1
+image := ynput/ayon-dependencies-tool:0.0.2
 
 build:
 	cp -r ./../dependencies .
