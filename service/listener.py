@@ -5,6 +5,7 @@ import platform
 
 import ayon_api
 from nxtools import logging
+from nxtools import log_traceback
 
 from dependencies import create_package
 
@@ -70,8 +71,7 @@ class DependenciesToolListener:
             except Exception as e:
                 status = "finished"
                 description = f"Creation of package for {bundle_name} failed\n{str(e)}"  # noqa
-                import traceback
-                traceback.print_exc()
+                log_traceback(e)
 
             ayon_api.update_event(
                 event["id"],
