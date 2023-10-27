@@ -12,7 +12,7 @@ pydantic = "^1.10.2"
 nxtools = "^1.6"
 requests = "^2.25.1"
 toml = "^0.10.2" # for parsing pyproject.toml
-ayon-python-api = "^0.4"
+ayon-python-api = ">=0.5"
 click = "^8.1"
 
 [tool.poetry.dev-dependencies]

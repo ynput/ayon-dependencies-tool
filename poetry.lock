@@ -44,14 +44,14 @@ tests-no-zope = ["cloudpickle", "hypothesis", "mypy (>=1.1.1)", "pympler", "pyte
 
 [[package]]
 name = "ayon-python-api"
-version = "0.3.5"
+version = "0.5.1"
 description = "AYON Python API"
 category = "main"
 optional = false
 python-versions = "*"
 files = [
-    {file = "ayon-python-api-0.3.5.tar.gz", hash = "sha256:00304724f1203de4b13404ecb521c9cbbb7c374e8176059af3f51443cfc1e916"},
-    {file = "ayon_python_api-0.3.5-py3-none-any.whl", hash = "sha256:217ac8c90ba6e8e43239147ccbbc8c60e27a73cb84301d5180c7000bf52255f1"},
+    {file = "ayon-python-api-0.5.1.tar.gz", hash = "sha256:ea5d396b86ceaeb75e11fcebc30c52b084488b7a64d1ee87a2a2f6abbee612cd"},
+    {file = "ayon_python_api-0.5.1-py3-none-any.whl", hash = "sha256:0bbbe8e69ed03f9a3a4eaf99fd65deca3c5adef3e2b464d05a4e8b6b595b5b21"},
 ]
 
 [package.dependencies]
@@ -1586,4 +1586,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9,<4.0"
-content-hash = "82071c210eda5f1116489eeefabd20f004db358db7bf258515b0712f730a20c5"
+content-hash = "eb927083f85a4c4805617bb12d3f8204cce79fede24b8066df920d446e14f83e"
