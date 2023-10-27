@@ -192,7 +192,7 @@ default_help() {
   echo ""
   echo "Runtime targets:"
   echo "  install                       Install Poetry and update venv by lock file."
-  echo "  set_env                       Set all env vars in .env file."
+  echo "  set-env                       Set all env vars in .env file."
   echo "  listen                        Start listener on a server."
   echo "  create                        Create dependency package for single bundle."
   echo "  list-bundles                  List bundles available on server."

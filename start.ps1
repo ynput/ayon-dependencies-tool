@@ -20,7 +20,7 @@ function Default-Func {
     Write-Host ""
     Write-Host "Runtime targets:"
     Write-Host "  install                       Install Poetry and update venv by lock file."
-    Write-Host "  set_env                       Set all env vars in .env file."
+    Write-Host "  set-env                       Set all env vars in .env file."
     Write-Host "  listen                        Start listener on a server."
     Write-Host "  create                        Create dependency package for single bundle."
     Write-Host "  list-bundles                  List bundles available on server."
@@ -98,14 +98,17 @@ function main {
     if ($FunctionName -eq $null)
     {
         Default-Func
-    } elseif ($FunctionName -eq "install") {
+        return
+    }
+    $FunctionName = $FunctionName.ToLower() -replace "\W"
+    if ($FunctionName -eq "install") {
         Change-Cwd
         install
     } elseif ($FunctionName -eq "listen") {
         Change-Cwd
         set_env
         & "$env:POETRY_HOME\bin\poetry" run python "$($repo_root)\service" @arguments
-    } elseif ($FunctionName -eq "set_env") {
+    } elseif ($FunctionName -eq "setenv") {
         Change-Cwd
         set_env
     } elseif ($FunctionName -eq "create") {
