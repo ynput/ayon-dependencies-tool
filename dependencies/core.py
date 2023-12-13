@@ -207,8 +207,7 @@ def get_bundle_addons_tomls(con, bundle):
     }
 
 
-def find_installer_by_name(con, bundle_name, installer_name):
-    platform_name = platform.system().lower()
+def find_installer_by_name(con, bundle_name, installer_name, platform_name):
     for installer in con.get_installers()["installers"]:
         if (
             installer["platform"] == platform_name
@@ -286,7 +285,7 @@ def is_valid_toml(toml):
     return True
 
 
-def merge_tomls(main_toml, addon_toml, addon_name):
+def merge_tomls(main_toml, addon_toml, addon_name, platform_name):
     """Add dependencies from 'addon_toml' to 'main_toml'.
 
     Looks for mininimal compatible version from both tomls.
@@ -327,8 +326,6 @@ def merge_tomls(main_toml, addon_toml, addon_name):
             main_poetry[dependency] = resolved_vers
 
     # handle runtime dependencies
-    platform_name = platform.system().lower()
-
     addon_poetry = addon_toml.get("ayon", {}).get("runtimeDependencies")
     if not addon_poetry:
         return main_toml
@@ -420,20 +417,23 @@ def _version_parse(version_value):
         "^2.0.0"
         { version = "301", markers = "sys_platform == 'win32'" }
     """
+
     if isinstance(version_value, dict):
         return version_value.get("version")
     return version.parse(version_value)
 
 
-def get_full_toml(base_toml_data, addon_tomls):
+def get_full_toml(base_toml_data, addon_tomls, platform_name):
     """Loops through list of local addon folder paths to create full .toml
 
     Full toml is used to calculate set of python dependencies for all enabled
     addons.
 
     Args:
-        base_toml_data (dict): content of pyproject.toml in the root
-        addon_tomls (dict): content of addon pyproject.toml
+        base_toml_data (dict[str, Any]): Content of pyproject.toml from
+            ayon-launcher installer.
+        addon_tomls (dict[str, Any]): Content of addon pyproject.toml
+        platform_name (str): Platform name.
 
     Returns:
         (dict) updated base .toml
@@ -472,7 +472,8 @@ def get_full_toml(base_toml_data, addon_tomls):
         if isinstance(addon_toml_data, str):
             addon_toml_data = toml.loads(addon_toml_data)
         base_toml_data = merge_tomls(
-            base_toml_data, addon_toml_data, addon_name)
+            base_toml_data, addon_toml_data, addon_name, platform_name
+        )
 
     # Convert all 'ConstraintClassesHint' to 'str'
     main_poetry_tool = base_toml_data["tool"]["poetry"]
@@ -772,7 +773,7 @@ def calculate_hash(filepath):
     return checksum.hexdigest()
 
 
-def prepare_package_data(venv_zip_path, bundle):
+def prepare_package_data(venv_zip_path, bundle, platform_name):
     """Creates package data for server.
 
     All data in output are used to call 'create_dependency_package'.
@@ -780,6 +781,7 @@ def prepare_package_data(venv_zip_path, bundle):
     Args:
         venv_zip_path (str): Local path to zipped venv.
         bundle (Bundle): Bundle object with all data.
+        platform_name (str): Platform name.
 
     Returns:
         dict[str, Any]: Dependency package information.
@@ -788,7 +790,6 @@ def prepare_package_data(venv_zip_path, bundle):
     venv_path = os.path.join(os.path.dirname(venv_zip_path), ".venv")
     python_modules = get_python_modules(venv_path)
 
-    platform_name = platform.system().lower()
     package_name = os.path.basename(venv_zip_path)
     checksum = calculate_hash(venv_zip_path)
 
@@ -804,9 +805,7 @@ def prepare_package_data(venv_zip_path, bundle):
     }
 
 
-def stored_package_to_dir(
-    output_dir, venv_zip_path, bundle, package_data
-):
+def stored_package_to_dir(output_dir, venv_zip_path, bundle, package_data):
     """Store dependency package to output directory.
 
     A json file with dependency package information is created and stored
@@ -953,10 +952,14 @@ def _create_package(
         print(f"Bundle '{bundle.name}' does not have set installer.")
         return None
 
+    platform_name = platform.system().lower()
     installer = find_installer_by_name(
-        con, bundle_name, bundle.installer_version)
+        con, bundle_name, bundle.installer_version, platform_name
+    )
     installer_toml_data = get_installer_toml(installer)
-    full_toml_data = get_full_toml(installer_toml_data, bundle_addons_toml)
+    full_toml_data = get_full_toml(
+        installer_toml_data, bundle_addons_toml, platform_name
+    )
 
     applicable_package = get_applicable_package(con, full_toml_data)
     if applicable_package:
@@ -971,10 +974,11 @@ def _create_package(
 
     venv_zip_path = prepare_zip_venv(addons_venv_path, output_root)
 
-    package_data = prepare_package_data(venv_zip_path, bundle)
+    package_data = prepare_package_data(venv_zip_path, bundle, platform_name)
     if destination_root:
         stored_package_to_dir(
-            destination_root, venv_zip_path, bundle, package_data)
+            destination_root, venv_zip_path, bundle, package_data
+        )
 
     if not skip_upload:
         upload_to_server(con, venv_zip_path, package_data)
