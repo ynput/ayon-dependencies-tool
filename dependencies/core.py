@@ -704,7 +704,7 @@ def get_applicable_package(con, new_toml):
         new_toml (dict[str, Any]): Data of regular pyproject.toml file.
 
     Returns:
-        str: name of matching package
+        dict[str, Any]: Data of matching package.
     """
 
     toml_python_packages = dict(
