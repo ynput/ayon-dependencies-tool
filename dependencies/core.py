@@ -888,6 +888,8 @@ def prepare_package_data(
 
     venv_path = os.path.join(os.path.dirname(venv_zip_path), ".venv")
     python_modules = get_python_modules(venv_path)
+    # Runtime dependencies do not have special key
+    python_modules.update(runtime_dependencies)
 
     package_name = os.path.basename(venv_zip_path)
     checksum = calculate_hash(venv_zip_path)
@@ -895,7 +897,6 @@ def prepare_package_data(
     return {
         "filename": package_name,
         "python_modules": python_modules,
-        "runtime_python_modules": runtime_dependencies,
         "source_addons": bundle.addons,
         "installer_version": bundle.installer_version,
         "checksum": checksum,
