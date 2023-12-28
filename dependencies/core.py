@@ -462,7 +462,7 @@ def get_full_toml(base_toml_data, addon_tomls, platform_name):
         # TODO handler other version-less contraints
         if link.scheme.startswith("git+"):
             url = ParsedUrl.parse(link.url)
-            new_value = {"git": url.url,}
+            new_value = {"git": url.url}
             if url.rev:
                 new_value["rev"] = url.rev
 
