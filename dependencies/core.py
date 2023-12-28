@@ -9,7 +9,6 @@ import json
 import subprocess
 import collections
 import shutil
-import itertools
 from typing import Dict, Union
 from packaging import version
 from dataclasses import dataclass
