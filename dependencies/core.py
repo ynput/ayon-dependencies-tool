@@ -33,6 +33,7 @@ from .utils import (
     ZipFileLongPaths,
     get_venv_executable,
     get_venv_site_packages,
+    PACKAGE_ROOT,
 )
 
 ConstraintClasses = (
@@ -66,8 +67,7 @@ def get_poetry_install_script():
         str: Path to poetry install script.
     """
 
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    downloads_dir = os.path.join(current_dir, "downloads")
+    downloads_dir = os.path.join(PACKAGE_ROOT, "downloads")
     if not os.path.exists(downloads_dir):
         os.makedirs(downloads_dir)
     poetry_script_path = os.path.join(
@@ -840,8 +840,8 @@ def get_python_modules(venv_path):
 
         match = re.match(r"^(.+?)(?:==|>=|<=|~=|!=|@)(.+)$", line)
         if match:
-            package_name, version = match.groups()
-            packages[package_name.rstrip()] = version.lstrip()
+            package_name, package_version = match.groups()
+            packages[package_name.rstrip()] = package_version.lstrip()
         else:
             packages[line] = None
 
@@ -865,7 +865,12 @@ def calculate_hash(filepath):
     return checksum.hexdigest()
 
 
-def prepare_package_data(venv_zip_path, bundle, platform_name):
+def prepare_package_data(
+    venv_zip_path: str,
+    bundle: Bundle,
+    platform_name: str,
+    runtime_dependencies: Dict[str, str],
+):
     """Creates package data for server.
 
     All data in output are used to call 'create_dependency_package'.
@@ -874,6 +879,8 @@ def prepare_package_data(venv_zip_path, bundle, platform_name):
         venv_zip_path (str): Local path to zipped venv.
         bundle (Bundle): Bundle object with all data.
         platform_name (str): Platform name.
+        runtime_dependencies (dict[str, str]): Runtime dependencies with
+            requested versions.
 
     Returns:
         dict[str, Any]: Dependency package information.
@@ -888,6 +895,7 @@ def prepare_package_data(venv_zip_path, bundle, platform_name):
     return {
         "filename": package_name,
         "python_modules": python_modules,
+        "runtime_python_modules": runtime_dependencies,
         "source_addons": bundle.addons,
         "installer_version": bundle.installer_version,
         "checksum": checksum,
@@ -988,6 +996,30 @@ def is_file_deletable(filepath):
     return False
 
 
+def get_runtime_dependencies(
+    runtime_root: str, addons_venv_path: str
+) -> Dict[str, str]:
+    python_executable = get_venv_executable(addons_venv_path, "python")
+    script_path = os.path.join(PACKAGE_ROOT, "_runtime_deps.py")
+
+    with tempfile.NamedTemporaryFile(
+        prefix="ayon_dep_runtime", suffix=".json", delete=False
+    ) as tmp:
+        output_path = tmp.name
+
+    with open(output_path, "w") as stream:
+        json.dump({"runtime_root": runtime_root}, stream)
+
+    try:
+        subprocess.run([python_executable, script_path, output_path])
+        with open(output_path) as stream:
+            data = json.load(stream)
+        return data["runtime_dependencies"]
+
+    finally:
+        os.remove(output_path)
+
+
 def _remove_tmpdir(tmpdir):
     """Safer removement of temp directory.
 
@@ -1071,6 +1103,9 @@ def _create_package(
         installer,
         installed_installer_runtime_deps
     )
+    runtime_dependencies = get_runtime_dependencies(
+        runtime_root, addons_venv_path
+    )
 
     venv_zip_path = prepare_zip_venv(
         addons_venv_path,
@@ -1078,7 +1113,9 @@ def _create_package(
         output_root,
     )
 
-    package_data = prepare_package_data(venv_zip_path, bundle, platform_name)
+    package_data = prepare_package_data(
+        venv_zip_path, bundle, platform_name, runtime_dependencies
+    )
     if destination_root:
         stored_package_to_dir(
             destination_root, venv_zip_path, bundle, package_data

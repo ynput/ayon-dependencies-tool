@@ -23,6 +23,7 @@ ANSI_REGEX = re.compile(
     ),
     flags=re.IGNORECASE
 )
+PACKAGE_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
 def get_venv_executable(venv_root, executable="python"):
