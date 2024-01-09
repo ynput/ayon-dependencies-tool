@@ -9,7 +9,8 @@ import json
 import subprocess
 import collections
 import shutil
-from typing import Dict, Union
+
+from typing import Dict, Union, Any, List
 from packaging import version
 from dataclasses import dataclass
 
@@ -57,7 +58,7 @@ class Bundle:
     installer_version: Union[str, None]
 
 
-def get_poetry_install_script():
+def get_poetry_install_script() -> str:
     """Get Poetry install script path.
 
     Script is cached in downloads folder. If script is not cached ye, it
@@ -80,7 +81,9 @@ def get_poetry_install_script():
     return poetry_script_path
 
 
-def get_pyenv_arguments(output_root, python_version):
+def get_pyenv_arguments(
+    output_root: str, python_version: str
+) -> Union[List[str], None]:
     """Use pyenv to install python version and use for venv creation.
 
     Usage of pyenv is ideal as it allows to properly install runtime
@@ -113,7 +116,7 @@ def get_pyenv_arguments(output_root, python_version):
     return [python_path]
 
 
-def get_python_arguments(output_root, python_version):
+def get_python_arguments(output_root: str, python_version: str) -> List[str]:
     """Get arguments to run python.
 
     By default, is trying to use 'pyenv' to install python version and use
@@ -141,7 +144,7 @@ def get_python_arguments(output_root, python_version):
     return [python_path]
 
 
-def get_bundles(con):
+def get_bundles(con: ayon_api.ServerAPI) -> Dict[str, Bundle]:
     """Provides dictionary with available bundles
 
     Returns:
@@ -163,7 +166,7 @@ def get_bundles(con):
     return bundles_by_name
 
 
-def get_all_addon_tomls(con):
+def get_all_addon_tomls(con: ayon_api.ServerAPI) -> Dict[str, Dict[str, Any]]:
     """Provides list of dict containing addon tomls.
 
     Returns:
@@ -186,7 +189,9 @@ def get_all_addon_tomls(con):
     return tomls
 
 
-def get_bundle_addons_tomls(con, bundle):
+def get_bundle_addons_tomls(
+    con: ayon_api.ServerAPI, bundle: Bundle
+) -> Dict[str, Dict[str, Any]]:
     """Query addons for `bundle` to get their python dependencies.
 
     Returns:
@@ -207,7 +212,12 @@ def get_bundle_addons_tomls(con, bundle):
     }
 
 
-def find_installer_by_name(con, bundle_name, installer_name, platform_name):
+def find_installer_by_name(
+    con: ayon_api.ServerAPI,
+    bundle_name: str,
+    installer_name: str,
+    platform_name: str,
+) -> Dict[str, Any]:
     for installer in con.get_installers()["installers"]:
         if (
             installer["platform"] == platform_name
@@ -217,7 +227,7 @@ def find_installer_by_name(con, bundle_name, installer_name, platform_name):
     raise ValueError(f"{bundle_name} must have installer present.")
 
 
-def get_installer_toml(installer):
+def get_installer_toml(installer: Dict[str, Any]) -> Dict[str, Any]:
     """Returns dict with format matching of .toml file for `installer_name`.
 
     Queries info from server for `bundle_name` and its `installer_name`,
@@ -258,7 +268,7 @@ def get_installer_toml(installer):
     }
 
 
-def is_valid_toml(toml):
+def is_valid_toml(toml: Dict[str, Any]) -> bool:
     """Validates that 'toml' contains all required fields.
 
     Args:
@@ -285,7 +295,12 @@ def is_valid_toml(toml):
     return True
 
 
-def merge_tomls(main_toml, addon_toml, addon_name, platform_name):
+def merge_tomls(
+    main_toml: Dict[str, Dict[str, Any]],
+    addon_toml: Dict[str, Dict[str, Any]],
+    addon_name: str,
+    platform_name: str,
+) -> Dict[str, Dict[str, Any]]:
     """Add dependencies from 'addon_toml' to 'main_toml'.
 
     Looks for mininimal compatible version from both tomls.
@@ -369,7 +384,10 @@ def merge_tomls(main_toml, addon_toml, addon_name, platform_name):
     return main_toml
 
 
-def _get_correct_version(main_version, dep_version):
+def _get_correct_version(
+    main_version: Union[str, Dict[str, Any], ConstraintClassesHint],
+    dep_version: Union[str, Dict[str, Any]]
+) -> Union[ConstraintClassesHint, Dict[str, Any]]:
     """Return resolved version from two version (constraint).
 
     Warning:
@@ -412,7 +430,7 @@ def _get_correct_version(main_version, dep_version):
     return main_version
 
 
-def _is_url_constraint(version):
+def _is_url_constraint(version: Any) -> bool:
     version = str(version)
     return "http" in version or "git" in version
 
@@ -784,7 +802,9 @@ def prepare_zip_venv(venv_path, runtime_root, output_root):
     return venv_zip_path
 
 
-def get_applicable_package(con, new_toml):
+def get_applicable_package(
+    con: ayon_api.ServerAPI, new_toml: Dict[str, Any]
+) -> Union[Dict[str, Any], None]:
     """Compares existing dependency packages to find matching.
 
     One dep package could contain same versions of python dependencies for
@@ -796,7 +816,7 @@ def get_applicable_package(con, new_toml):
         new_toml (dict[str, Any]): Data of regular pyproject.toml file.
 
     Returns:
-        dict[str, Any]: Data of matching package.
+        Union[dict[str, Any], None]: Data of matching package.
     """
 
     toml_python_packages = dict(
@@ -810,7 +830,7 @@ def get_applicable_package(con, new_toml):
             return package
 
 
-def get_python_modules(venv_path):
+def get_python_modules(venv_path: str) -> Dict[str, str]:
     """Uses pip freeze to get installed libraries from `venv_path`.
 
     Args:
@@ -821,9 +841,9 @@ def get_python_modules(venv_path):
         dict[str, str] {'acre': '1.0.0',...}
     """
 
-    pip_executable = get_venv_executable(venv_path, "pip")
+    pip_executable: str = get_venv_executable(venv_path, "pip")
 
-    process = subprocess.Popen(
+    process: subprocess.Popen = subprocess.Popen(
         [pip_executable, "freeze", venv_path, "--no-color"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
