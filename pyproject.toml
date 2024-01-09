@@ -1,8 +1,8 @@
 [tool.poetry]
-name = "dependencies-tool"
-version = "0.1.2"
-description = "Dependencies tool for Ayon"
-authors = ["Petr Kalis <petr.kalis@ynput.com>"]
+name = "ayon-dependencies-tool"
+version = "0.1.3-dev.1"
+description = "Dependencies tool for AYON"
+authors = ["Ynput s.r.o. <info@ynput.io>"]
 
 [tool.poetry.dependencies]
 appdirs = "^1.4"
