@@ -23,8 +23,6 @@ from ..dependencies import (
     _create_dependency_package_basename
 )
 
-ROOT_FOLDER = os.getenv("OPENPYPE_ROOT") or \
-    os.path.join(os.path.dirname(__file__), "../../../pype")
 TEST_RESOURCES_DIR = os.path.join(os.path.dirname(__file__), "resources")
 TEST_OP_TOML = os.path.join(TEST_RESOURCES_DIR, "openpype_pyproject.toml")
 PURGE_TMP = True
