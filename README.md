@@ -10,9 +10,11 @@ Then it uses Poetry to create new venv, zips it and provides this to AYON server
 
 It is expected to run on machine that has set reasonable development environment.
 
-`.env` must be created with filled variables (you can use prepared skeleton `.env` in root of the repo):
-- AYON_API_KEY=api key for service account from AYON Server
-- AYON_SERVER_URL=Ayon server tool should communicate with
+Required environment variables:
+- AYON_SERVER_URL - AYON server url
+- AYON_API_KEY - AYON api key for service account
+
+For local development, use `.env` file. You can use `example_env` as base.
 
 The tool should ideally run automatically and listen for events on the Server OR could be run manually on machine(s).
 
@@ -25,9 +27,9 @@ Implemented commands:
 - `list-bundles` - lists all bundles on Ayon server
 
 TODO:
-- [ ] reuse python version from Installer (requirement for `pyenv`?)
-- [ ] handle runtime dependencies too
-    - consider runtime dependencies from installer
-    - give option to addons define their runtime dependencies
+- [ ] force to reuse python version from Installer (make `pyenv` required)
+- [ ] safe runtime dependencies
+    - dependencies and runtime dependencies are not validated agains each other
+    - single pip module can be installed in dependencies and in runtime dependencies
 - [ ] skip dependency package creation if there are not any addons with dependencies
 - [ ] Provide dockerized AYON service manageable by directly by [ASH (AYON service host)](https://github.com/ynput/ash)
