@@ -319,7 +319,7 @@ def merge_tomls(
     dependency_keys = ["dependencies"]
     for key in dependency_keys:
         main_poetry = main_toml["tool"]["poetry"].setdefault(key, {})
-        addon_poetry = addon_toml["tool"]["poetry"].get(key)
+        addon_poetry = addon_toml.get("tool", {}).get("poetry", {}).get(key)
         if not addon_poetry:
             continue
 
@@ -465,8 +465,7 @@ def get_full_toml(base_toml_data, addon_tomls, platform_name):
     """
 
     # Fix git sources of installer dependencies
-    main_poetry_tool = base_toml_data["tool"]["poetry"]
-    main_dependencies = main_poetry_tool["dependencies"]
+    main_dependencies = base_toml_data["tool"]["poetry"]["dependencies"]
     modified_dependencies = {}
     for key, value in main_dependencies.items():
         if not isinstance(value, str):
@@ -501,8 +500,7 @@ def get_full_toml(base_toml_data, addon_tomls, platform_name):
         )
 
     # Convert all 'ConstraintClassesHint' to 'str'
-    main_poetry_tool = base_toml_data["tool"]["poetry"]
-    main_dependencies = main_poetry_tool["dependencies"]
+    main_dependencies = base_toml_data["tool"]["poetry"]["dependencies"]
     modified_dependencies = {}
     for key, value in main_dependencies.items():
         if not isinstance(value, (str, dict)):
