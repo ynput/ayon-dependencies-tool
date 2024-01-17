@@ -619,10 +619,16 @@ def _install_runtime_dependencies(
     """
 
     for package_name, package_version in runtime_dependencies.items():
+        parsed_version = parse_constraint(package_version)
+        if isinstance(parsed_version, VersionRangeConstraint):
+            package_version = f">={parsed_version.min},<{parsed_version.max}"
+        else:
+            package_version = f"=={package_version}"
+
         args = [
             poetry_bin, "run",
             "python", "-m", "pip", "install",
-            "--upgrade", f"{package_name}=={package_version}",
+            "--upgrade", f"{package_name}{package_version}",
             "--prefix", str(runtime_root)
         ]
 
