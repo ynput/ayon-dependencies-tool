@@ -111,7 +111,10 @@ def get_pyenv_arguments(
         [pyenv_path, "local", python_version],
         cwd=output_root
     )
-    output = subprocess.check_output([pyenv_path, "which", "python"])
+    output = subprocess.check_output(
+        [pyenv_path, "which", "python"],
+        cwd=output_root
+    )
     python_path = output.decode().strip()
     return [python_path]
 
