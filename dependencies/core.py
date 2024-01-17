@@ -636,6 +636,7 @@ def _install_runtime_dependencies(
         poetry_bin (str): Path to poetry executable.
     """
 
+    requirements_lines = []
     for package_name, package_version in runtime_dependencies.items():
         parsed_version: VersionConstraint = parse_constraint(package_version)
         if parsed_version.is_any():
@@ -656,18 +657,25 @@ def _install_runtime_dependencies(
 
             package_version = f"{min_ver},{max_ver}"
 
-        args = [
-            poetry_bin, "run",
-            "python", "-m", "pip", "install",
-            "--upgrade", f"{package_name}{package_version}",
-            "--prefix", str(runtime_root)
-        ]
+        requirements_lines.append(f"{package_name}{package_version}")
 
-        run_subprocess(
-            args,
-            env=env,
-            cwd=runtime_root
-        )
+    requiements_path = os.path.join(runtime_root, "requirements.txt")
+    with open(requiements_path, "w") as stream:
+        stream.write("\n".join(requirements_lines))
+
+    args = [
+        poetry_bin, "run",
+        "python", "-m", "pip", "install",
+        "--upgrade",
+        "-r", requiements_path,
+        "--prefix", str(runtime_root)
+    ]
+
+    run_subprocess(
+        args,
+        env=env,
+        cwd=runtime_root
+    )
 
 
 def _convert_url_constraints(full_toml_data):
