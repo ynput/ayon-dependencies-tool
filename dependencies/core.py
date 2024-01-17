@@ -610,7 +610,7 @@ def prepare_new_venv(full_toml_data, output_root, installer):
         # linux and macos create python{x}.{y} subfolder (should create
         #   only one)
         runtime_site_packages = os.path.join(
-            lib_dir, python_version[:3], "site-packages"
+            lib_dir, f"python{python_version[:3]}", "site-packages"
         )
         # Fill correct path only if exists
         if os.path.exists(lib_dir):
