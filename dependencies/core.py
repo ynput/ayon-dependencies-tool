@@ -601,8 +601,27 @@ def prepare_new_venv(full_toml_data, output_root, installer):
     _install_runtime_dependencies(
         runtime_dependencies, runtime_root, poetry_bin, env
     )
+    if platform.system().lower() == "windows":
+        runtime_site_packages = os.path.join(
+            runtime_root, "Lib", "site-packages"
+        )
+    else:
+        lib_dir = os.path.join(runtime_root, "lib")
+        # linux and macos create python{x}.{y} subfolder (should create
+        #   only one)
+        runtime_site_packages = os.path.join(
+            lib_dir, f"python{python_version[:3]}", "site-packages"
+        )
+        # Fill correct path only if exists
+        if os.path.exists(lib_dir):
+            python_subdirs = list(os.listdir(lib_dir))
+            if python_subdirs:
+                python_subdir = python_subdirs[0]
+                runtime_site_packages = os.path.join(
+                    lib_dir, python_subdir, "site-packages"
+                )
 
-    return venv_path, runtime_root, installed_installer_runtime_deps
+    return venv_path, runtime_site_packages, installed_installer_runtime_deps
 
 
 def _install_runtime_dependencies(
@@ -617,19 +636,46 @@ def _install_runtime_dependencies(
         poetry_bin (str): Path to poetry executable.
     """
 
+    requirements_lines = []
     for package_name, package_version in runtime_dependencies.items():
-        args = [
-            poetry_bin, "run",
-            "python", "-m", "pip", "install",
-            "--upgrade", f"{package_name}=={package_version}",
-            "-t", str(runtime_root)
-        ]
+        parsed_version: VersionConstraint = parse_constraint(package_version)
+        if parsed_version.is_any():
+            package_version = ""
+        elif parsed_version.is_simple():
+            package_version = f"=={package_version}"
+        else:
+            min_ver = str(parsed_version.min)
+            if parsed_version.include_min:
+                min_ver = f">={min_ver}"
+            else:
+                min_ver = f">{min_ver}"
+            max_ver = str(parsed_version.max)
+            if parsed_version.include_max:
+                max_ver = f"<={max_ver}"
+            else:
+                max_ver = f"<{max_ver}"
 
-        run_subprocess(
-            args,
-            env=env,
-            cwd=runtime_root
-        )
+            package_version = f"{min_ver},{max_ver}"
+
+        requirements_lines.append(f"{package_name}{package_version}")
+
+    requiements_path = os.path.join(runtime_root, "requirements.txt")
+    with open(requiements_path, "w") as stream:
+        stream.write("\n".join(requirements_lines))
+
+    args = [
+        poetry_bin, "run",
+        "python", "-m", "pip", "install",
+        "--upgrade",
+        "-r", requiements_path,
+        "--prefix", str(runtime_root)
+    ]
+
+    run_subprocess(
+        args,
+        env=env,
+        cwd=runtime_root
+    )
 
 
 def _convert_url_constraints(full_toml_data):
@@ -736,7 +782,7 @@ def remove_existing_from_venv(
         )
 
 
-def zip_venv(venv_folder, runtime_root, zip_filepath):
+def zip_venv(venv_folder, runtime_site_packages, zip_filepath):
     """Zips newly created venv to single .zip file."""
 
     site_packages_roots = get_venv_site_packages(venv_folder)
@@ -763,15 +809,15 @@ def zip_venv(venv_folder, runtime_root, zip_filepath):
                     zipf.write(src_path, dst_path)
 
         zip_runtime_root = "runtime"
-        for root, _, filenames in os.walk(runtime_root):
+        for root, _, filenames in os.walk(runtime_site_packages):
             # Care only about files
             if not filenames:
                 continue
 
             dst_root = zip_runtime_root
-            if root != runtime_root:
+            if root != runtime_site_packages:
                 dst_root = os.path.join(
-                    dst_root, root[len(runtime_root) + 1:]
+                    dst_root, root[len(runtime_site_packages) + 1:]
                 )
 
             for filename in filenames:
@@ -780,12 +826,12 @@ def zip_venv(venv_folder, runtime_root, zip_filepath):
                 zipf.write(src_path, dst_path)
 
 
-def prepare_zip_venv(venv_path, runtime_root, output_root):
+def prepare_zip_venv(venv_path, runtime_site_packages, output_root):
     """Handles creation of zipped venv.
 
     Args:
         venv_path (str): Path to created venv.
-        runtime_root (str): Path to runtime dependencies.
+        runtime_site_packages (str): Path to runtime dependencies.
         output_root (str): Temp folder path.
 
     Returns:
@@ -795,7 +841,7 @@ def prepare_zip_venv(venv_path, runtime_root, output_root):
     zip_file_name = f"{create_dependency_package_basename()}.zip"
     venv_zip_path = os.path.join(output_root, zip_file_name)
     print(f"Zipping new venv to {venv_zip_path}")
-    zip_venv(venv_path, runtime_root, venv_zip_path)
+    zip_venv(venv_path, runtime_site_packages, venv_zip_path)
 
     return venv_zip_path
 
@@ -1016,7 +1062,7 @@ def is_file_deletable(filepath):
 
 
 def get_runtime_dependencies(
-    runtime_root: str, addons_venv_path: str
+    runtime_site_packages: str, addons_venv_path: str
 ) -> Dict[str, str]:
     python_executable = get_venv_executable(addons_venv_path, "python")
     script_path = os.path.join(PACKAGE_ROOT, "_runtime_deps.py")
@@ -1027,7 +1073,10 @@ def get_runtime_dependencies(
         output_path = tmp.name
 
     with open(output_path, "w") as stream:
-        json.dump({"runtime_root": runtime_root}, stream)
+        json.dump(
+            {"runtime_site_packages": runtime_site_packages},
+            stream
+        )
 
     try:
         subprocess.run([python_executable, script_path, output_path])
@@ -1110,7 +1159,7 @@ def _create_package(
 
     (
         addons_venv_path,
-        runtime_root,
+        runtime_site_packages,
         installed_installer_runtime_deps
     ) = prepare_new_venv(
         full_toml_data, output_root, installer
@@ -1123,12 +1172,12 @@ def _create_package(
         installed_installer_runtime_deps
     )
     runtime_dependencies = get_runtime_dependencies(
-        runtime_root, addons_venv_path
+        runtime_site_packages, addons_venv_path
     )
 
     venv_zip_path = prepare_zip_venv(
         addons_venv_path,
-        runtime_root,
+        runtime_site_packages,
         output_root,
     )
 

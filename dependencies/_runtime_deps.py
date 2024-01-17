@@ -42,7 +42,9 @@ def main():
     with open(output_path, "r") as stream:
         data = json.load(stream)
 
-    data["runtime_dependencies"] = get_runtime_modules(data["runtime_root"])
+    data["runtime_dependencies"] = get_runtime_modules(
+        data["runtime_site_packages"]
+    )
 
     print(f"Storing output to {output_path}")
     with open(output_path, "w") as stream:
