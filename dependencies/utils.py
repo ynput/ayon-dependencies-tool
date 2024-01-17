@@ -1,28 +1,11 @@
 import os
+import sys
+import time
 import re
 import subprocess
 import platform
 import zipfile
 
-ANSI_REGEX = re.compile(
-    (
-        r"\x1b("
-        r"(\[\??\d+[hl])|"
-        r"([=<>a-kzNM78])|"
-        r"([\(\)][a-b0-2])|"
-        r"(\[\d{0,2}[ma-dgkjqi])|"
-        r"(\[\d+;\d+[hfy]?)|"
-        r"(\[;?[hf])|"
-        r"(#[3-68])|"
-        r"([01356]n)|"
-        r"(O[mlnp-z]?)|"
-        r"(/Z)|"
-        r"(\d+)|"
-        r"(\[\?\d;\d0c)|"
-        r"(\d;\dR))"
-    ),
-    flags=re.IGNORECASE
-)
 PACKAGE_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -62,12 +45,6 @@ def get_venv_site_packages(venv_root):
     return output
 
 
-def _clean_color_codes(text):
-    """Completely incomplete clearing of color tags"""
-
-    return ANSI_REGEX.sub("", text)
-
-
 def run_subprocess(
     cmd_args, *args, bound_output=True, **kwargs
 ):
@@ -101,48 +78,19 @@ def run_subprocess(
     filtered_env = {str(k): str(v) for k, v in env.items()}
 
     # set overrides
-    kwargs["stdout"] = kwargs.get("stdout", subprocess.PIPE)
-    kwargs["stderr"] = kwargs.get("stderr", subprocess.PIPE)
-    kwargs["stdin"] = kwargs.get("stdin", subprocess.PIPE)
     kwargs["env"] = filtered_env
+    kwargs["stdin"] = subprocess.PIPE
+    kwargs["stdout"] = sys.stdout
+    kwargs["stderr"] = sys.stderr
 
     cmd = subprocess.list2cmdline(cmd_args)
     proc = subprocess.Popen(cmd_args, *args, **kwargs)
-    _stdout, _stderr = proc.communicate()
-    if _stdout:
-        try:
-            _stdout = _stdout.decode("utf-8")
-        except Exception:
-            _stdout = str(_stdout)
-        _stdout = _clean_color_codes(_stdout)
-        if bound_output:
-            print((
-                f"{cmd}\n"
-                "*** Output ***"
-                f"\n{_stdout}"
-                "**************"
-            ))
-        else:
-            print(_stdout)
+    while proc.poll() is None:
+        time.sleep(0.1)
 
     if proc.returncode != 0:
         error_msg = f"Executing arguments was not successful: {cmd}"
         print(error_msg)
-        if _stderr:
-            try:
-                _stderr = _stderr.decode("utf-8")
-            except Exception:
-                _stderr = str(_stderr)
-            _stderr = _clean_color_codes(_stderr)
-            if bound_output:
-                print(
-                    "--- StdErr ---"
-                    f"\n{_stderr}"
-                    "--------------"
-                )
-            else:
-                print(_stderr)
-
         raise RuntimeError(error_msg)
     return proc.returncode
 
