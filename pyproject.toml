@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ayon-dependencies-tool"
-version = "1.0.0"
+version = "1.0.1-dev.1"
 description = "Dependencies tool for AYON"
 authors = ["Ynput s.r.o. <info@ynput.io>"]
 
