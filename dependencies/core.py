@@ -601,7 +601,25 @@ def prepare_new_venv(full_toml_data, output_root, installer):
     _install_runtime_dependencies(
         runtime_dependencies, runtime_root, poetry_bin, env
     )
-    runtime_site_packages = os.path.join(runtime_root, "Lib", "site-packages")
+    if platform.system().lower() == "windows":
+        runtime_site_packages = os.path.join(
+            runtime_root, "Lib", "site-packages"
+        )
+    else:
+        lib_dir = os.path.join(runtime_root, "lib")
+        # linux and macos create python{x}.{y} subfolder (should create
+        #   only one)
+        runtime_site_packages = os.path.join(
+            lib_dir, python_version[:3], "site-packages"
+        )
+        # Fill correct path only if exists
+        if os.path.exists(lib_dir):
+            python_subdirs = list(os.listdir(lib_dir))
+            if python_subdirs:
+                python_subdir = python_subdirs[0]
+                runtime_site_packages = os.path.join(
+                    lib_dir, python_subdir, "site-packages"
+                )
 
     return venv_path, runtime_site_packages, installed_installer_runtime_deps
 
