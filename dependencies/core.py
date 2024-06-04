@@ -370,19 +370,18 @@ def merge_tomls(
         if not isinstance(resolved_vers, ConstraintClasses):
             raise ValueError(
                 "RuntimeDependency must be defined as version.")
+
+        dep_info_c = parse_constraint(dep_info)
         if (
-            not resolved_vers.is_empty()
-            and parse_constraint(dep_info).allows(resolved_vers)
+            resolved_vers.is_empty()
+            or not dep_info_c.allows_all(resolved_vers)
         ):
-            dep_info = main_poetry[dependency]
-        else:
             raise ValueError(
                 f"Cannot result {dependency} with"
                 f" {dep_info} for {addon_name}"
             )
 
-        if dep_info:
-            main_poetry[dependency] = dep_info
+        main_poetry[dependency] = str(dep_info_c.union(resolved_vers))
 
     return main_toml
 
