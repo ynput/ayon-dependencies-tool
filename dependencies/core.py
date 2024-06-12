@@ -47,7 +47,7 @@ ConstraintClassesHint = Union[
     VersionConstraint,
     VersionRangeConstraint
 ]
-POETRY_VERSION = "1.3.2"
+POETRY_VERSION = "1.8.1"
 
 
 @dataclass
@@ -206,6 +206,9 @@ def get_bundle_addons_tomls(
         for key, value in bundle.addons.items()
         if value is not None
     }
+    print("Getting dependencies for addons:")
+    for addon in bundle_addons:
+        print(f"  - {addon}")
     addon_tomls = get_all_addon_tomls(con)
 
     return {
@@ -497,6 +500,9 @@ def get_full_toml(base_toml_data, addon_tomls, platform_name):
     for addon_name, addon_toml_data in addon_tomls.items():
         if isinstance(addon_toml_data, str):
             addon_toml_data = toml.loads(addon_toml_data)
+        
+        print(f"Merging in {addon_name} dependencies")
+        
         base_toml_data = merge_tomls(
             base_toml_data, addon_toml_data, addon_name, platform_name
         )
@@ -508,6 +514,10 @@ def get_full_toml(base_toml_data, addon_tomls, platform_name):
         if not isinstance(value, (str, dict)):
             modified_dependencies[key] = str(value)
     main_dependencies.update(modified_dependencies)
+
+    print("Collected dependencies:")
+    for key, value in sorted(main_dependencies.items()):
+        print(f"  - {key} ({value})")
 
     return base_toml_data
 
@@ -554,6 +564,10 @@ def prepare_new_venv(full_toml_data, output_root, installer):
     #   dependencies
     for dep in installer_runtime_dependencies:
         runtime_dependencies.pop(dep, None)
+
+    print("Runtime dependencies to install:")
+    for package in sorted(runtime_dependencies):
+        print(f"  - {package}")
 
     # Store installer runtime dependencies only if are installed
     installed_installer_runtime_deps = set()
@@ -911,6 +925,10 @@ def get_python_modules(venv_path: str) -> Dict[str, str]:
         else:
             packages[line] = None
 
+    print("Installed python modules:")
+    for package in sorted(packages):
+        print(f"  - {package}")
+
     return packages
 
 
@@ -1199,7 +1217,7 @@ def _create_package(
 
 
 def create_package(bundle_name, con=None, output_dir=None, skip_upload=False):
-    """Pulls all active addons info from server and creade dependency package.
+    """Pulls all active addons info from server and create dependency package.
 
     1. Takes base (installer) pyproject.toml, and adds tomls from addons
         pyproject.toml (if available).
