@@ -5,6 +5,7 @@
 
 ### Python template
 # Byte-compiled / optimized / DLL files
+.python-version
 __pycache__/
 *.py[cod]
 *$py.class
