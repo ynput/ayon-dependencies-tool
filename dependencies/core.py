@@ -569,8 +569,6 @@ def prepare_new_venv(full_toml_data, output_root, installer):
     for package in sorted(runtime_dependencies):
         print(f"  - {package}")
 
-    
-
     # Store installer runtime dependencies only if are installed
     installed_installer_runtime_deps = set()
     if runtime_dependencies:
