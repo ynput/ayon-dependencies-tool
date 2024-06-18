@@ -1,12 +1,15 @@
-# Build AYON launcher docker image
+# Build AYON dependencies docker image
 FROM centos:7 AS builder
 ARG PYTHON_VERSION=3.9.13
+ARG BUILD_DATE
+ARG VERSION
+ARG BUNDLE_NAME
 
-LABEL description="Docker Image to build and run AYON Launcher under Centos 7"
-LABEL org.opencontainers.image.name="ynput/ayon-launcher"
-LABEL org.opencontainers.image.title="AYON Launcher Docker Image"
+LABEL description="Docker Image to create dependency package for Centos 7 installer"
+LABEL org.opencontainers.image.name="ynput/ayon-dependencies"
+LABEL org.opencontainers.image.title="AYON Dependency Package Docker Image"
 LABEL org.opencontainers.image.url="https://ayon.ynput.io/"
-LABEL org.opencontainers.image.source="https://github.com/ynput/ayon-launcher"
+LABEL org.opencontainers.image.source="https://github.com/ynput/ayon-dependencies-tool"
 LABEL org.opencontainers.image.documentation="https://ayon.ynput.io"
 LABEL org.opencontainers.image.created=$BUILD_DATE
 LABEL org.opencontainers.image.version=$VERSION
@@ -64,7 +67,7 @@ RUN git clone -b 0.17.0 --single-branch https://github.com/NixOS/patchelf.git . 
     && make \
     && make install
 
-RUN mkdir /opt/ayon-launcher
+RUN mkdir /opt/ayon-dependencies-tool
 
 RUN curl https://pyenv.run | bash
 # ENV PYTHON_CONFIGURE_OPTS --enable-shared
@@ -81,28 +84,17 @@ RUN source $HOME/.bashrc \
     && export LD_LIBRARY_PATH=/usr/local/openssl/lib:$LD_LIBRARY_PATH \
     && pyenv install ${PYTHON_VERSION}
 
-COPY . /opt/ayon-launcher/
-RUN rm -rf /opt/ayon-launcher/.poetry || echo "No Poetry installed yet."
-RUN chmod +x /opt/ayon-launcher/tools/make.sh
+COPY . /opt/ayon-dependencies-tool/
+RUN rm -rf /opt/ayon-dependencies-tool/.poetry || echo "No Poetry installed yet."
+RUN chmod +x /opt/ayon-dependencies-tool/start.sh
 
-# USER pype
+# USER ayon
 
-WORKDIR /opt/ayon-launcher
-
-ENV QT_BINDING=centos7
+WORKDIR /opt/ayon-dependencies-tool
 
 RUN source $HOME/.bashrc \
     && pyenv local ${PYTHON_VERSION}
 
 RUN source $HOME/.bashrc \
-    && ./tools/make.sh create-env \
-    && ./tools/make.sh install-runtime \
-    && ./tools/make.sh build-make-installer
-
-RUN cp /usr/lib64/libffi* ./build/output/lib \
-    && cp /usr/lib64/openssl11/libssl* ./build/output/lib \
-    && cp /usr/lib64/openssl11/libcrypto* ./build/output/lib \
-    && ln -sr ./build/output/lib/libssl.so ./build/output/lib/libssl.1.1.so \
-    && ln -sr ./build/output/lib/libcrypto.so ./build/output/lib/libcrypto.1.1.so \
-    && cp /root/.pyenv/versions/${PYTHON_VERSION}/lib/libpython* ./build/output/lib \
-    && cp /usr/lib64/libxcb* ./build/output/vendor/python/PySide2/Qt/lib
+    && ./start.sh install \
+    && ./start.sh create -b $BUNDLE_NAME
