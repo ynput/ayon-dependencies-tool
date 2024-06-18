@@ -100,7 +100,7 @@ detect_python () {
 install_poetry () {
   echo -e "${BIGreen}>>>${RST} Installing Poetry ..."
   export POETRY_HOME="$repo_root/.poetry"
-  export POETRY_VERSION="1.8.1
+  export POETRY_VERSION="1.8.1"
   command -v curl >/dev/null 2>&1 || { echo -e "${BIRed}!!!${RST}${BIYellow} Missing ${RST}${BIBlue}curl${BIYellow} command.${RST}"; return 1; }
   curl -sSL https://install.python-poetry.org/ | python -
 }
