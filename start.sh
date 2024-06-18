@@ -206,9 +206,7 @@ main() {
     exit return_code
   fi
 
-  if [[ -z $POETRY_HOME ]]; then
-    export POETRY_HOME="$repo_root/.poetry"
-  fi
+  export POETRY_HOME="$repo_root/.poetry"
 
   # Use first argument, lower and keep only characters
   function_name="$(echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z]*//g')"

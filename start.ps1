@@ -50,8 +50,6 @@ function Install-Poetry() {
         $python = & pyenv which python
     }
 
-    $env:POETRY_HOME="$repo_root\.poetry"
-    $env:POETRY_VERSION="1.8.1"
     (Invoke-WebRequest -Uri https://install.python-poetry.org/ -UseBasicParsing).Content | & $($python) -
 }
 
@@ -127,6 +125,7 @@ function main {
 }
 
 # Force POETRY_HOME to this directory
-$env:POETRY_HOME = "$repo_root\.poetry"
+$env:POETRY_HOME="$repo_root\.poetry"
+$env:POETRY_VERSION="1.8.1"
 
 main
