@@ -63,8 +63,8 @@ function CreatePackageWithDocker {
     $variant = $args[1]
     $imageIdPath = "$($repo_root)/docker-image.id"
 
-    if ($null -eq $bundleName) {
-        variant = "ubuntu"
+    if ($null -eq $variant) {
+        $variant = "ubuntu"
     }
 
     if ($variant -eq "ubuntu") {
