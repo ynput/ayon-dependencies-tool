@@ -33,4 +33,5 @@ TODO:
     - e.g. SomeModule==1.0.0 can be defined in dependencies and SomeModule>=1.1.0 in runtime dependencies
 - [ ] skip dependency package creation if there are not any addons with dependencies
 - [ ] Provide dockerized AYON service manageable directly by [ASH (AYON service host)](https://github.com/ynput/ash)
-- [ ] Provide single-time docker to create dependency packages for linux distros
+- [X] Provide single-time docker to create dependency packages for linux distros
+    - [ ] be able to re-use the image for multiple runs
