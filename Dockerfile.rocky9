@@ -3,10 +3,9 @@ FROM rockylinux:9 AS builder
 ARG PYTHON_VERSION=3.9.13
 ARG BUILD_DATE
 ARG VERSION
-ARG BUNDLE_NAME
 
 LABEL description="Docker Image to create dependency package for RockyLinux 9 installer"
-LABEL org.opencontainers.image.name="ynput/ayon-dependencies"
+LABEL org.opencontainers.image.name="ynput/ayon-dependencies-rocky9"
 LABEL org.opencontainers.image.title="AYON Dependency Package Docker Image"
 LABEL org.opencontainers.image.url="https://ayon.ynput.io/"
 LABEL org.opencontainers.image.source="https://github.com/ynput/ayon-dependencies-tool"
@@ -71,5 +70,4 @@ RUN source $HOME/.bashrc \
 RUN source $HOME/.bashrc \
     && ./start.sh install
 
-RUN source $HOME/.bashrc \
-    && ./start.sh create -b $BUNDLE_NAME
+CMD [/opt/ayon-dependencies-tool/start.sh, listen]
