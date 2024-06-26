@@ -23,8 +23,8 @@ Entry point for manual triggering is `start.ps1` or `start.sh`.
 Implemented commands:
 - `install` - creates `./.venv` with requirements for this tool
 - `create` - runs main process to create new dependency package and uploads it. Expects argument with name of Bundle (eg. `./start create -b MyBundle`). For more information `./start create --help`.
-- `listen` - starts service connecting to Ayon server and listening for events to trigger main process (TBD)
-- `list-bundles` - lists all bundles on Ayon server
+- `listen` - starts service connecting to AYON server and listening for events to trigger main process (TBD)
+- `list-bundles` - lists all bundles on AYON server
 
 TODO:
 - [ ] force to reuse python version from Installer (make `pyenv` required)
@@ -34,4 +34,6 @@ TODO:
 - [ ] skip dependency package creation if there are not any addons with dependencies
 - [ ] Provide dockerized AYON service manageable directly by [ASH (AYON service host)](https://github.com/ynput/ash)
 - [X] Provide single-time docker to create dependency packages for linux distros
-    - [ ] be able to re-use the image for multiple runs
+    - [X] be able to re-use the image for multiple runs
+    - [ ] take environment variables from called script
+    - [ ] limit which files are copied to docker (e.g. should not contain '.env' file)

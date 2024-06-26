@@ -187,19 +187,8 @@ list_bundles() {
   "$POETRY_HOME/bin/poetry" run python "$repo_root/dependencies" list-bundles "$@"
 }
 
-create_package_with_docker() {
-  pushd "$repo_root" > /dev/null || return > /dev/null
-  set_env
-  bundle_name=$1
-  variant=$2
-  if [ -z "$bundle_name" ]; then
-    echo -e "${BIRed}!!!${RST} Missing bundle name."
-    return 1
-  fi
-  if [ -z "$variant" ]; then
-    variant="ubuntu"
-  fi
-
+create_docker_image_private() {
+  variant=$1
   if [ "$variant" == "ubuntu" ]; then
     dockerfile="$repo_root/Dockerfile"
   else
@@ -210,32 +199,44 @@ create_package_with_docker() {
     echo -e "${BIRed}!!!${RST} Dockerfile for specifed platform ${BIWhite}$variant${RST} doesn't exist."
     exit 1
   fi
-  echo -e "${BIGreen}>>>${RST} Using Dockerfile for ${BIWhite}$variant${RST} ..."
+  docker build --pull --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') --build-arg VERSION=$tool_version -t ynput/ayon-dependencies-$variant:$tool_version -f $dockerfile .
+}
 
-  image_id_path="$repo_root/docker-image.id"
-  # Remove existing image id file if exists
-  if [ -f $image_id_path ]; then
-    rm $image_id_path
+create_docker_image() {
+  variant=$1
+  if [ -z "$variant" ]; then
+    echo -e "${BIRed}!!!${RST} !!! Missing variant (available options are '${BIWhite}centos7${RST}', '${BIWhite}ubuntu${RST}', '${BIWhite}debian${RST}' or '${BIWhite}rocky9${RST}')."
+    exit 1
+  fi
+  create_docker_image_private $variant
+}
+
+create_package_with_docker() {
+  pushd "$repo_root" > /dev/null || return > /dev/null
+  set_env
+  bundle_name=$1
+  variant=$2
+  if [ -z "$bundle_name" || -z "$variant"]; then
+    echo -e "${BIRed}!!!${RST} Please use 'docker-create' command with [bundle name] [variant] arguments."
+    return 1
+  fi
+  image_name="ynput/ayon-dependencies-$variant:$tool_version"
+  if [ -z "$(docker images -q image_name 2> /dev/null)" ]; then
+    create_docker_image_private $variant
   fi
 
+  echo -e "${BIGreen}>>>${RST} Using Dockerfile for ${BIWhite}$variant${RST} ..."
+
   echo -e "${BIGreen}>>>${RST} Running docker build ..."
-  docker build --pull --iidfile $image_id_path --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') --build-arg VERSION=$tool_version --build-arg BUNDLE_NAME=$bundle_name -t ynput/ayon-dependencies:$tool_version-$variant -f $dockerfile .
+  container_name=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+  docker run --name $container_name -it --entrypoint "/bin/bash" $image_name -c "/opt/ayon-dependencies-tool/start.sh create -b $bundle_name"
+  docker container rm $containerName
+
   if [ $? -ne 0 ] ; then
     echo $?
     echo -e "${BIRed}!!!${RST} Docker build failed."
     return 1
   fi
-
-  if [ ! -f $image_id_path ]; then
-    echo -e "${BIRed}!!!${RST} Docker command failed, cannot find image id."
-    exit 1
-  fi
-  # Get image id
-  local id=$(<"$image_id_path")
-  # Remove file with image id
-  rm $image_id_path
-  # Remove image from docker
-  docker image rm $id
 
   echo -e "${BIGreen}>>>${RST} All done!!!"
 }
@@ -247,12 +248,13 @@ default_help() {
   echo "Usage: ./start.ps1 [target]"
   echo ""
   echo "Runtime targets:"
-  echo "  install                         Install Poetry and update venv by lock file."
-  echo "  set-env                         Set all env vars in .env file."
-  echo "  listen                          Start listener on a server."
-  echo "  create                          Create dependency package for single bundle."
-  echo "  list-bundles                    List bundles available on server."
-  echo "  docker-build [bundle] [variant] Build dependency package using docker. Variant can be 'centos7', 'ubuntu', 'debian' or 'rocky9'"
+  echo "  install                          Install Poetry and update venv by lock file."
+  echo "  set-env                          Set all env vars in .env file."
+  echo "  listen                           Start listener on a server."
+  echo "  create                           Create dependency package for single bundle."
+  echo "  list-bundles                     List bundles available on server."
+  echo "  docker-create [bundle] [variant] Create dependency package using docker. Variant can be 'centos7', 'ubuntu', 'debian' or 'rocky9'"
+  echo "  build-docker [variant]           Build docker image. Variant can be 'centos7', 'ubuntu', 'debian' or 'rocky9'"
   echo ""
 }
 
@@ -289,8 +291,12 @@ main() {
       list_bundles "${@:2}" || return_code=$?
       exit $return_code
       ;;
-    "dockerbuild")
+    "dockercreate")
       create_package_with_docker "${@:2}" || return_code=$?
+      exit $return_code
+      ;;
+    "builddocker")
+      create_docker_image "${@:2}" || return_code=$?
       exit $return_code
       ;;
   esac
