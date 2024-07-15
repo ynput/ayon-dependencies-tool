@@ -36,6 +36,7 @@ from .utils import (
     get_venv_site_packages,
     PACKAGE_ROOT,
 )
+from .custom_solver import solve_dependencies
 
 ConstraintClasses = (
     EmptyConstraint,
@@ -301,7 +302,88 @@ def is_valid_toml(toml: Dict[str, Any]) -> bool:
     return True
 
 
-def merge_tomls(
+def _merge_dependency(
+    main_dep_info,
+    dep_info,
+    platform_name,
+    dependency,
+    addon_name
+):
+    if main_dep_info is None:
+        return dep_info
+
+    if isinstance(main_dep_info, dict):
+        if platform_name in main_dep_info:
+            main_dep_info = main_dep_info[platform_name]
+
+    resolved_vers = _get_correct_version(main_dep_info, dep_info)
+    if not isinstance(resolved_vers, ConstraintClasses):
+        raise ValueError(
+            "RuntimeDependency must be defined as version.")
+
+    dep_info_c = parse_constraint(dep_info)
+    if (
+        resolved_vers.is_empty()
+        or not dep_info_c.allows_all(resolved_vers)
+    ):
+        raise ValueError(
+            f"Cannot result {dependency} with"
+            f" {dep_info} for {addon_name}"
+        )
+    return str(dep_info_c.union(resolved_vers))
+
+
+def merge_tomls_dependencies(
+    main_toml: Dict[str, Dict[str, Any]],
+    addon_toml: Dict[str, Dict[str, Any]],
+    addon_name: str,
+) -> Dict[str, Dict[str, Any]]:
+    """Add dependencies from 'addon_toml' to 'main_toml'.
+
+    Looks for mininimal compatible version from both tomls.
+
+    Handles sections:
+        - ["tool"]["poetry"]["dependencies"]
+        - ["ayon"]["runtimeDependencies"]
+
+    Returns:
+        (dict): updated 'main_toml' with additional/updated dependencies
+
+    Raises:
+        ValueError if any tuple of main and addon dependency cannot be resolved
+    """
+
+    main_dependencies = (
+        main_toml["tool"]["poetry"].setdefault("dependencies", {})
+    )
+    addon_dependencies = (
+        addon_toml
+        .get("tool", {})
+        .get("poetry", {})
+        .get("dependencies")
+    ) or {}
+
+    for dependency, dep_version in addon_dependencies.items():
+        main_version = main_dependencies.get(dependency)
+        resolved_vers = _get_correct_version(main_version, dep_version)
+        if not main_version:
+            main_version = "N/A"
+
+        if (
+            isinstance(resolved_vers, ConstraintClasses)
+            and resolved_vers.is_empty()
+        ):
+            raise ValueError(
+                f"Version {dep_version} cannot be resolved against"
+                f" {main_version} for {dependency} in {addon_name}"
+            )
+
+        main_dependencies[dependency] = resolved_vers
+
+    return main_toml
+
+
+def merge_tomls_runtime(
     main_toml: Dict[str, Dict[str, Any]],
     addon_toml: Dict[str, Dict[str, Any]],
     addon_name: str,
@@ -319,39 +401,19 @@ def merge_tomls(
         (dict): updated 'main_toml' with additional/updated dependencies
 
     Raises:
-        ValueError if any tuple of main and addon dependency cannot be resolved
+        ValueError: If any tuple of main and addon dependency
+            cannot be resolved.
     """
-
-    dependency_keys = ["dependencies"]
-    for key in dependency_keys:
-        main_poetry = main_toml["tool"]["poetry"].setdefault(key, {})
-        addon_poetry = addon_toml.get("tool", {}).get("poetry", {}).get(key)
-        if not addon_poetry:
-            continue
-
-        for dependency, dep_version in addon_poetry.items():
-            main_version = main_poetry.get(dependency)
-            resolved_vers = _get_correct_version(main_version, dep_version)
-            if not main_version:
-                main_version = "N/A"
-
-            if (
-                isinstance(resolved_vers, ConstraintClasses)
-                and resolved_vers.is_empty()
-            ):
-                raise ValueError(
-                    f"Version {dep_version} cannot be resolved against"
-                    f" {main_version} for {dependency} in {addon_name}"
-                )
-
-            main_poetry[dependency] = resolved_vers
 
     # handle runtime dependencies
     addon_poetry = addon_toml.get("ayon", {}).get("runtimeDependencies")
     if not addon_poetry:
         return main_toml
 
-    main_poetry = main_toml["ayon"]["runtimeDependencies"]
+    main_dependencies = (
+        main_toml["tool"]["poetry"].setdefault("dependencies", {})
+    )
+    main_runtime = main_toml["ayon"]["runtimeDependencies"]
     for dependency, dep_info in addon_poetry.items():
         if isinstance(dep_info, dict):
             if platform_name in dep_info:
@@ -360,31 +422,23 @@ def merge_tomls(
             if "version" in dep_info:
                 dep_info = dep_info["version"]
 
-        if dependency not in main_poetry:
-            main_poetry[dependency] = dep_info
+        if dependency in main_dependencies:
+            main_dependencies[dependency] = _merge_dependency(
+                main_dependencies[dependency],
+                dep_info,
+                platform_name,
+                dependency,
+                addon_name
+            )
             continue
 
-        main_dep_info = main_poetry[dependency]
-        if isinstance(main_dep_info, dict):
-            if platform_name in main_dep_info:
-                main_dep_info = main_dep_info[platform_name]
-
-        resolved_vers = _get_correct_version(main_dep_info, dep_info)
-        if not isinstance(resolved_vers, ConstraintClasses):
-            raise ValueError(
-                "RuntimeDependency must be defined as version.")
-
-        dep_info_c = parse_constraint(dep_info)
-        if (
-            resolved_vers.is_empty()
-            or not dep_info_c.allows_all(resolved_vers)
-        ):
-            raise ValueError(
-                f"Cannot result {dependency} with"
-                f" {dep_info} for {addon_name}"
-            )
-
-        main_poetry[dependency] = str(dep_info_c.union(resolved_vers))
+        main_runtime[dependency] = _merge_dependency(
+            main_runtime.get(dependency),
+            dep_info,
+            platform_name,
+            dependency,
+            addon_name
+        )
 
     return main_toml
 
@@ -495,15 +549,22 @@ def get_full_toml(base_toml_data, addon_tomls, platform_name):
 
         modified_dependencies[key] = new_value
     main_dependencies.update(modified_dependencies)
+    for addon_name, addon_toml_data in tuple(addon_tomls.items()):
+        if isinstance(addon_toml_data, str):
+            addon_tomls[addon_name] = toml.loads(addon_toml_data)
 
     # Merge addon dependencies
     for addon_name, addon_toml_data in addon_tomls.items():
-        if isinstance(addon_toml_data, str):
-            addon_toml_data = toml.loads(addon_toml_data)
-        
         print(f"Merging in {addon_name} dependencies")
         
-        base_toml_data = merge_tomls(
+        base_toml_data = merge_tomls_dependencies(
+            base_toml_data, addon_toml_data, addon_name
+        )
+
+    for addon_name, addon_toml_data in addon_tomls.items():
+        print(f"Merging in {addon_name} runtime dependencies")
+
+        base_toml_data = merge_tomls_runtime(
             base_toml_data, addon_toml_data, addon_name, platform_name
         )
 
@@ -522,12 +583,21 @@ def get_full_toml(base_toml_data, addon_tomls, platform_name):
     return base_toml_data
 
 
-def prepare_new_venv(full_toml_data, output_root, installer):
+class VenvInfo:
+    def __init__(
+        self, root, poetry_bin, poetry_env, venv_path, python_version
+    ):
+        self.root = root
+        self.poetry_bin = poetry_bin
+        self.poetry_env = poetry_env
+        self.venv_path = venv_path
+        self.python_version = python_version
+
+
+def prepare_new_venv(output_root, installer):
     """Let Poetry create new venv in 'venv_folder' from 'full_toml_data'.
 
     Args:
-        full_toml_data (dict): toml representation calculated based on basic
-            .toml + all addon tomls.
         output_root (str): Path where venv should be created.
         installer (dict[str, Any]): Installer metadata.
 
@@ -544,13 +614,46 @@ def prepare_new_venv(full_toml_data, output_root, installer):
 
     poetry_script = get_poetry_install_script()
     poetry_home = os.path.join(output_root, ".poetry")
+    poetry_bin = os.path.join(poetry_home, "bin", "poetry")
+    venv_path = os.path.join(output_root, ".venv")
+
     env = dict(os.environ.items())
     env["POETRY_VERSION"] = POETRY_VERSION
     env["POETRY_HOME"] = poetry_home
     # Create poetry in output root
     subprocess.call(python_args + [poetry_script], env=env, cwd=output_root)
 
-    toml_path = os.path.join(output_root, "pyproject.toml")
+    # Create venv using poetry
+    run_subprocess(
+        python_args + ["-m", "venv", venv_path],
+        env=env,
+        cwd=output_root
+    )
+    env["VIRTUAL_ENV"] = venv_path
+    # Change poetry config to ignore venv in poetry
+    for config_key, config_value in (
+        ("virtualenvs.create", "false"),
+        ("virtualenvs.in-project", "false"),
+    ):
+        run_subprocess(
+            [poetry_bin, "config", config_key, config_value, "--local"],
+            env=env,
+            cwd=output_root
+        )
+
+    return VenvInfo(
+        output_root,
+        poetry_bin,
+        env,
+        venv_path,
+        python_version
+    )
+
+
+def install_poetry(
+    full_toml_data, installer, venv_info: VenvInfo
+):
+    toml_path = os.path.join(venv_info.root, "pyproject.toml")
 
     _convert_url_constraints(full_toml_data)
 
@@ -582,40 +685,22 @@ def prepare_new_venv(full_toml_data, output_root, installer):
     with open(toml_path, "w") as stream:
         toml.dump(full_toml_data, stream)
 
-    poetry_bin = os.path.join(poetry_home, "bin", "poetry")
-    venv_path = os.path.join(output_root, ".venv")
-
-    # Create venv using poetry
-    run_subprocess(
-        python_args + ["-m", "venv", venv_path],
-        env=env,
-        cwd=output_root
-    )
-    env["VIRTUAL_ENV"] = venv_path
-    # Change poetry config to ignore venv in poetry
-    for config_key, config_value in (
-        ("virtualenvs.create", "false"),
-        ("virtualenvs.in-project", "false"),
-    ):
-        run_subprocess(
-            [poetry_bin, "config", config_key, config_value, "--local"],
-            env=env,
-            cwd=output_root
-        )
-
     # Install dependencies from pyproject.toml
     return_code = run_subprocess(
-        [poetry_bin, "install", "--no-root", "--ansi"],
-        env=env,
-        cwd=venv_path
+        [venv_info.poetry_bin, "install", "--no-root", "--ansi"],
+        env=venv_info.poetry_env,
+        cwd=venv_info.venv_path
     )
     if return_code != 0:
-        raise RuntimeError(f"Preparation of {venv_path} failed!")
+        raise RuntimeError(f"Preparation of {venv_info.venv_path} failed!")
 
-    runtime_root = os.path.join(output_root, "runtime")
+    runtime_root = os.path.join(venv_info.root, "runtime")
     os.makedirs(runtime_root, exist_ok=True)
     _install_runtime_dependencies(
-        runtime_dependencies, runtime_root, poetry_bin, env
+        runtime_dependencies,
+        runtime_root,
+        venv_info.poetry_bin,
+        venv_info.poetry_env
     )
     if platform.system().lower() == "windows":
         runtime_site_packages = os.path.join(
@@ -626,7 +711,7 @@ def prepare_new_venv(full_toml_data, output_root, installer):
         # linux and macos create python{x}.{y} subfolder (should create
         #   only one)
         runtime_site_packages = os.path.join(
-            lib_dir, f"python{python_version[:3]}", "site-packages"
+            lib_dir, f"python{venv_info.python_version[:3]}", "site-packages"
         )
         # Fill correct path only if exists
         if os.path.exists(lib_dir):
@@ -637,7 +722,7 @@ def prepare_new_venv(full_toml_data, output_root, installer):
                     lib_dir, python_subdir, "site-packages"
                 )
 
-    return venv_path, runtime_site_packages, installed_installer_runtime_deps
+    return runtime_site_packages, installed_installer_runtime_deps
 
 
 def _install_runtime_dependencies(
@@ -1172,31 +1257,34 @@ def _create_package(
         installer_toml_data, bundle_addons_toml, platform_name
     )
 
+    venv_info = prepare_new_venv(output_root, installer)
+
+    solve_dependencies(full_toml_data, output_root, venv_info.venv_path)
+
     applicable_package = get_applicable_package(con, full_toml_data)
     if applicable_package:
         update_bundle_with_package(con, bundle, applicable_package)
         return applicable_package["filename"]
 
     (
-        addons_venv_path,
         runtime_site_packages,
         installed_installer_runtime_deps
-    ) = prepare_new_venv(
-        full_toml_data, output_root, installer
+    ) = install_poetry(
+        full_toml_data, installer, venv_info
     )
 
     # remove already distributed libraries from addons specific venv
     remove_existing_from_venv(
-        addons_venv_path,
+        venv_info.venv_path,
         installer,
         installed_installer_runtime_deps
     )
     runtime_dependencies = get_runtime_dependencies(
-        runtime_site_packages, addons_venv_path
+        runtime_site_packages, venv_info.venv_path
     )
 
     venv_zip_path = prepare_zip_venv(
-        addons_venv_path,
+        venv_info.venv_path,
         runtime_site_packages,
         output_root,
     )
