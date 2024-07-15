@@ -21,12 +21,13 @@ function Default-Func {
     Write-Host "Usage: ./start.ps1 [target]"
     Write-Host ""
     Write-Host "Runtime targets:"
-    Write-Host "  install                         Install Poetry and update venv by lock file."
-    Write-Host "  set-env                         Set all env vars in .env file."
-    Write-Host "  listen                          Start listener on a server."
-    Write-Host "  create                          Create dependency package for single bundle."
-    Write-Host "  list-bundles                    List bundles available on server."
-    Write-Host "  docker-build [bundle] [variant] Build dependency package using docker. Variant can be 'centos7', 'ubuntu', 'debian' or 'rocky9'"
+    Write-Host "  install                          Install Poetry and update venv by lock file."
+    Write-Host "  set-env                          Set all env vars in .env file."
+    Write-Host "  listen                           Start listener on a server."
+    Write-Host "  create                           Create dependency package for single bundle."
+    Write-Host "  list-bundles                     List bundles available on server."
+    Write-Host "  docker-create [bundle] [variant] Create dependency package using docker. Variant can be 'centos7', 'ubuntu', 'debian' or 'rocky9'"
+    Write-Host "  build-docker [variant]           Build docker image. Variant can be 'centos7', 'ubuntu', 'debian', 'rocky8' or 'rocky9'"
     Write-Host ""
 }
 
@@ -56,17 +57,8 @@ function Install-Poetry() {
     (Invoke-WebRequest -Uri https://install.python-poetry.org/ -UseBasicParsing).Content | & $($python) -
 }
 
-function CreatePackageWithDocker {
-    $startTime = [int][double]::Parse((Get-Date -UFormat %s))
-    Write-Host ">>> Building AYON using Docker ..."
-    $bundleName = $args[0]
-    $variant = $args[1]
-    $imageIdPath = "$($repo_root)/docker-image.id"
-
-    if ($null -eq $variant) {
-        $variant = "ubuntu"
-    }
-
+function CreateDockerPrivate {
+    $variant = $args[0]
     if ($variant -eq "ubuntu") {
         $dockerfile = "$($repo_root)\Dockerfile"
     } else {
@@ -77,18 +69,41 @@ function CreatePackageWithDocker {
         Restore-Cwd
         Exit-WithCode 1
     }
+    docker build --pull --build-arg BUILD_DATE=$(Get-Date -UFormat %Y-%m-%dT%H:%M:%SZ) --build-arg VERSION=$TOOL_VERSION -t ynput/ayon-dependencies-$($variant):$TOOL_VERSION -f $dockerfile .
+}
+
+function CreateDocker {
+    $variant = $args[0]
+    if ($null -eq $variant) {
+        Write-Host "!!! Missing specified variant (available options are 'centos7', 'ubuntu', 'debian', 'rocky8' or 'rocky9')."
+        Restore-Cwd
+        Exit-WithCode 1
+    }
+    CreateDockerPrivate $variant
+}
+
+function CreatePackageWithDocker {
+    $startTime = [int][double]::Parse((Get-Date -UFormat %s))
+    Write-Host ">>> Building AYON dependency package using Docker ..."
+    $bundleName = $args[0]
+    $variant = $args[1]
+    if ($null -eq $bundleName -or $null -eq $variant) {
+        Write-Host "!!! Please use 'docker-create' command with [bundle name] [variant] arguments."
+        Restore-Cwd
+        Exit-WithCode 1
+    }
+
+    $imageName = "ynput/ayon-dependencies-$($variant):$TOOL_VERSION"
+    Write-Host "Using image name '$imageName'"
+
+    if (!(docker images -q $imageName 2> $null)) {
+        CreateDockerPrivate $variant
+    }
 
     Write-Host ">>> Running Docker build ..."
-
-    if (Test-Path $imageIdPath) {
-        Remove-Item $imageIdPath
-    }
-    docker build --pull --iidfile $imageIdPath --build-arg BUILD_DATE=$(Get-Date -UFormat %Y-%m-%dT%H:%M:%SZ) --build-arg VERSION=$TOOL_VERSION --build-arg BUNDLE_NAME=$bundleName -t ynput/ayon-dependencies:$TOOL_VERSION-$variant -f $dockerfile .
-    if (Test-Path $imageIdPath) {
-        $cid = Get-Content $imageIdPath
-        Remove-Item $imageIdPath
-        docker image rm $cid
-    }
+    $containerName = Get-Date -UFormat %Y%m%dT%H%M%SZ
+    docker run --name $containerName -it --entrypoint "/bin/bash" $imageName -c "/opt/ayon-dependencies-tool/start.sh create -b $bundleName"
+    docker container rm $containerName
 
     if ($LASTEXITCODE -ne 0) {
         Write-Host "!!! Docker command failed. $LASTEXITCODE"
@@ -164,9 +179,12 @@ function main {
         Change-Cwd
         set_env
         & "$env:POETRY_HOME\bin\poetry" run python "$($repo_root)\dependencies" list-bundles @arguments
-    } elseif ($FunctionName -eq "dockerbuild") {
+    } elseif ($FunctionName -eq "dockercreate") {
         Change-Cwd
         CreatePackageWithDocker @arguments
+    } elseif ($FunctionName -eq "builddocker") {
+        Change-Cwd
+        CreateDocker @arguments
     } else {
         Write-Host "Unknown function \"$FunctionName\""
         Default-Func

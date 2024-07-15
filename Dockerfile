@@ -3,10 +3,9 @@ FROM ubuntu:focal AS builder
 ARG PYTHON_VERSION=3.9.13
 ARG BUILD_DATE
 ARG VERSION
-ARG BUNDLE_NAME
 
 LABEL description="Docker Image to create dependency package for Ubuntu installer"
-LABEL org.opencontainers.image.name="ynput/ayon-dependencies"
+LABEL org.opencontainers.image.name="ynput/ayon-dependencies-ubuntu"
 LABEL org.opencontainers.image.title="AYON Dependency Package Docker Image"
 LABEL org.opencontainers.image.url="https://ayon.ynput.io/"
 LABEL org.opencontainers.image.source="https://github.com/ynput/ayon-dependencies-tool"
@@ -73,5 +72,6 @@ RUN source $HOME/init_pyenv.sh \
 
 # build launcher and installer
 RUN source $HOME/.bashrc \
-    && ./start.sh install \
-    && ./start.sh create -b $BUNDLE_NAME
+    && ./start.sh install
+
+CMD [/opt/ayon-dependencies-tool/start.sh, listen]
