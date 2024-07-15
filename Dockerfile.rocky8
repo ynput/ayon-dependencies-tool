@@ -1,15 +1,14 @@
-# Build AYON launcher docker image
+# Build AYON dependencies docker image
 FROM rockylinux:8 AS builder
 ARG PYTHON_VERSION=3.9.13
 ARG BUILD_DATE
 ARG VERSION
-ARG BUNDLE_NAME
 
-LABEL description="Docker Image to build and run AYON Launcher under RockyLinux 8"
-LABEL org.opencontainers.image.name="ynput/ayon-launcher"
-LABEL org.opencontainers.image.title="AYON Launcher Docker Image"
+LABEL description="Docker Image to create dependency package for RockyLinux 8 installer"
+LABEL org.opencontainers.image.name="ynput/ayon-dependencies-rocky8"
+LABEL org.opencontainers.image.title="AYON Dependency Package Docker Image"
 LABEL org.opencontainers.image.url="https://ayon.ynput.io/"
-LABEL org.opencontainers.image.source="https://github.com/ynput/ayon-launcher"
+LABEL org.opencontainers.image.source="https://github.com/ynput/ayon-dependencies-tool"
 LABEL org.opencontainers.image.documentation="https://ayon.ynput.io"
 LABEL org.opencontainers.image.created=$BUILD_DATE
 LABEL org.opencontainers.image.version=$VERSION
@@ -73,5 +72,4 @@ RUN source $HOME/.bashrc \
 RUN source $HOME/.bashrc \
     && ./start.sh install
 
-RUN source $HOME/.bashrc \
-    && ./start.sh create -b $BUNDLE_NAME
+CMD [/opt/ayon-dependencies-tool/start.sh, listen]
