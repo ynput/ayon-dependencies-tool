@@ -205,7 +205,7 @@ create_docker_image_private() {
 create_docker_image() {
   variant=$1
   if [ -z "$variant" ]; then
-    echo -e "${BIRed}!!!${RST} !!! Missing variant (available options are '${BIWhite}centos7${RST}', '${BIWhite}ubuntu${RST}', '${BIWhite}debian${RST}' or '${BIWhite}rocky9${RST}')."
+    echo -e "${BIRed}!!!${RST} !!! Missing variant (available options are '${BIWhite}centos7${RST}', '${BIWhite}ubuntu${RST}', '${BIWhite}debian${RST}', '${BIWhite}rocky8${RST}', '${BIWhite}rocky8${RST}' or '${BIWhite}rocky9${RST}')."
     exit 1
   fi
   create_docker_image_private $variant
@@ -253,8 +253,8 @@ default_help() {
   echo "  listen                           Start listener on a server."
   echo "  create                           Create dependency package for single bundle."
   echo "  list-bundles                     List bundles available on server."
-  echo "  docker-create [bundle] [variant] Create dependency package using docker. Variant can be 'centos7', 'ubuntu', 'debian' or 'rocky9'"
-  echo "  build-docker [variant]           Build docker image. Variant can be 'centos7', 'ubuntu', 'debian' or 'rocky9'"
+  echo "  docker-create [bundle] [variant] Create dependency package using docker. Variant can be 'centos7', 'ubuntu', 'debian', 'rocky8' or 'rocky9'"
+  echo "  build-docker [variant]           Build docker image. Variant can be 'centos7', 'ubuntu', 'debian', 'rocky8' or 'rocky9'"
   echo ""
 }
 

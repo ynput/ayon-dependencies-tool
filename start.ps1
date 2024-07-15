@@ -27,7 +27,7 @@ function Default-Func {
     Write-Host "  create                           Create dependency package for single bundle."
     Write-Host "  list-bundles                     List bundles available on server."
     Write-Host "  docker-create [bundle] [variant] Create dependency package using docker. Variant can be 'centos7', 'ubuntu', 'debian' or 'rocky9'"
-    Write-Host "  build-docker [variant]           Build docker image. Variant can be 'centos7', 'ubuntu', 'debian' or 'rocky9'"
+    Write-Host "  build-docker [variant]           Build docker image. Variant can be 'centos7', 'ubuntu', 'debian', 'rocky8' or 'rocky9'"
     Write-Host ""
 }
 
@@ -75,7 +75,7 @@ function CreateDockerPrivate {
 function CreateDocker {
     $variant = $args[0]
     if ($null -eq $variant) {
-        Write-Host "!!! Missing specified variant (available options are 'centos7', 'ubuntu', 'debian' or 'rocky9')."
+        Write-Host "!!! Missing specified variant (available options are 'centos7', 'ubuntu', 'debian', 'rocky8' or 'rocky9')."
         Restore-Cwd
         Exit-WithCode 1
     }
