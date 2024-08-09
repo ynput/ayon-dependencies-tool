@@ -10,6 +10,7 @@ $poetry_verbosity="-vv"
 $current_dir = Get-Location
 $repo_root_rel = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 $repo_root = (Get-Item $repo_root_rel).FullName
+$poetry_home_root="$repo_root\.poetry"
 
 $TOOL_VERSION = Invoke-Expression -Command "python -c ""import os;import sys;content={};f=open(r'$($current_dir)/version.py');exec(f.read(),content);f.close();print(content['__version__'])"""
 
@@ -53,7 +54,9 @@ function Install-Poetry() {
         }
         $python = & pyenv which python
     }
-
+    # Force POETRY_HOME to this directory
+    $env:POETRY_HOME = $poetry_home_root
+    $env:POETRY_VERSION="1.8.1"
     (Invoke-WebRequest -Uri https://install.python-poetry.org/ -UseBasicParsing).Content | & $($python) -
 }
 
@@ -126,14 +129,14 @@ function Restore-Cwd() {
 
 function install {
     # install dependencies for tool
-     if (-not (Test-Path -PathType Container -Path "$($env:POETRY_HOME)\bin")) {
+     if (-not (Test-Path -PathType Container -Path "$($poetry_home_root)\bin")) {
         Install-Poetry
     }
 
     Change-Cwd
 
     Write-Host ">>> ", "Poetry config ... "
-    & "$env:POETRY_HOME\bin\poetry" install --no-interaction --no-root --ansi  $poetry_verbosity
+    & "$poetry_home_root\bin\poetry" install --no-interaction --no-root --ansi  $poetry_verbosity
 }
 
 function set_env {
@@ -167,18 +170,18 @@ function main {
     } elseif ($FunctionName -eq "listen") {
         Change-Cwd
         set_env
-        & "$env:POETRY_HOME\bin\poetry" run python "$($repo_root)\service" @arguments
+        & "$poetry_home_root\bin\poetry" run python "$($repo_root)\service" @arguments
     } elseif ($FunctionName -eq "setenv") {
         Change-Cwd
         set_env
     } elseif ($FunctionName -eq "create") {
         Change-Cwd
         set_env
-        & "$env:POETRY_HOME\bin\poetry" run python "$($repo_root)\dependencies" create @arguments
+        & "$poetry_home_root\bin\poetry" run python "$($repo_root)\dependencies" create @arguments
     } elseif ($FunctionName -eq "listbundles") {
         Change-Cwd
         set_env
-        & "$env:POETRY_HOME\bin\poetry" run python "$($repo_root)\dependencies" list-bundles @arguments
+        & "$poetry_home_root\bin\poetry" run python "$($repo_root)\dependencies" list-bundles @arguments
     } elseif ($FunctionName -eq "dockercreate") {
         Change-Cwd
         CreatePackageWithDocker @arguments
@@ -192,8 +195,5 @@ function main {
     Restore-Cwd
 }
 
-# Force POETRY_HOME to this directory
-$env:POETRY_HOME="$repo_root\.poetry"
-$env:POETRY_VERSION="1.8.1"
 
 main
