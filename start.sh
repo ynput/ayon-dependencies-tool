@@ -64,6 +64,7 @@ realpath () {
 }
 
 repo_root=$(dirname "$(realpath ${BASH_SOURCE[0]})")
+poetry_home_root="$repo_root/.poetry"
 
 version_command="import os;exec(open(os.path.join('$repo_root', 'version.py')).read());print(__version__);"
 tool_version="$(python <<< ${version_command})"
@@ -102,7 +103,7 @@ detect_python () {
 
 install_poetry () {
   echo -e "${BIGreen}>>>${RST} Installing Poetry ..."
-  export POETRY_HOME="$repo_root/.poetry"
+  export POETRY_HOME="$poetry_home_root"
   export POETRY_VERSION="1.8.1"
   command -v curl >/dev/null 2>&1 || { echo -e "${BIRed}!!!${RST}${BIYellow} Missing ${RST}${BIBlue}curl${BIYellow} command.${RST}"; return 1; }
   curl -sSL https://install.python-poetry.org/ | python -
@@ -131,7 +132,7 @@ install () {
   pushd "$repo_root" > /dev/null || return > /dev/null
 
   echo -e "${BIGreen}>>>${RST} Reading Poetry ... \c"
-  if [ -f "$POETRY_HOME/bin/poetry" ]; then
+  if [ -f "$poetry_home_root/bin/poetry" ]; then
     echo -e "${BIGreen}OK${RST}"
   else
     echo -e "${BIYellow}NOT FOUND${RST}"
@@ -144,7 +145,7 @@ install () {
     echo -e "${BIGreen}>>>${RST} Installing dependencies ..."
   fi
 
-  "$POETRY_HOME/bin/poetry" install --no-root $poetry_verbosity || { echo -e "${BIRed}!!!${RST} Poetry environment installation failed"; return 1; }
+  "$poetry_home_root/bin/poetry" install --no-root $poetry_verbosity || { echo -e "${BIRed}!!!${RST} Poetry environment installation failed"; return 1; }
   if [ $? -ne 0 ] ; then
     echo -e "${BIRed}!!!${RST} Virtual environment creation failed."
     return 1
@@ -157,7 +158,7 @@ install () {
   # cx_freeze will crash on missing __pychache__ on these but
   # reinstalling them solves the problem.
   echo -e "${BIGreen}>>>${RST} Post-venv creation fixes ..."
-  "$POETRY_HOME/bin/poetry" run python -m pip install --disable-pip-version-check --force-reinstall pip
+  "$poetry_home_root/bin/poetry" run python -m pip install --disable-pip-version-check --force-reinstall pip
 }
 
 set_env () {
@@ -172,19 +173,19 @@ set_env () {
 
 listen () {
   pushd "$repo_root" > /dev/null || return > /dev/null
-  "$POETRY_HOME/bin/poetry" run python "$repo_root/service" "$@"
+  "$poetry_home_root/bin/poetry" run python "$repo_root/service" "$@"
 }
 
 create_bundle() {
   pushd "$repo_root" > /dev/null || return > /dev/null
   set_env
-  "$POETRY_HOME/bin/poetry" run python "$repo_root/dependencies" create "$@"
+  "$poetry_home_root/bin/poetry" run python "$repo_root/dependencies" create "$@"
 }
 
 list_bundles() {
   pushd "$repo_root" > /dev/null || return > /dev/null
   set_env
-  "$POETRY_HOME/bin/poetry" run python "$repo_root/dependencies" list-bundles "$@"
+  "$poetry_home_root/bin/poetry" run python "$repo_root/dependencies" list-bundles "$@"
 }
 
 create_docker_image_private() {
@@ -264,8 +265,6 @@ main() {
   if [ $return_code != 0 ]; then
     exit return_code
   fi
-
-  export POETRY_HOME="$repo_root/.poetry"
 
   # Use first argument, lower and keep only characters
   function_name="$(echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z]*//g')"
