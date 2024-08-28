@@ -230,7 +230,7 @@ create_package_with_docker() {
 
   echo -e "${BIGreen}>>>${RST} Running docker build ..."
   container_name=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
-  docker run --name $container_name -it --entrypoint "/bin/bash" $image_name -c "/opt/ayon-dependencies-tool/start.sh create -b $bundle_name"
+  docker run --name $container_name -it --entrypoint "/bin/bash" $image_name -l -c "/opt/ayon-dependencies-tool/start.sh create -b $bundle_name"
   docker container rm $containerName
 
   if [ $? -ne 0 ] ; then

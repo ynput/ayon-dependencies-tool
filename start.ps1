@@ -105,7 +105,7 @@ function CreatePackageWithDocker {
 
     Write-Host ">>> Running Docker build ..."
     $containerName = Get-Date -UFormat %Y%m%dT%H%M%SZ
-    docker run --name $containerName -it --entrypoint "/bin/bash" $imageName -c "/opt/ayon-dependencies-tool/start.sh create -b $bundleName"
+    docker run --name $containerName -it --entrypoint "/bin/bash" $imageName -l -c "/opt/ayon-dependencies-tool/start.sh create -b $bundleName"
     docker container rm $containerName
 
     if ($LASTEXITCODE -ne 0) {
