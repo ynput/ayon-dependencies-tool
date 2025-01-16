@@ -48,7 +48,6 @@ ConstraintClassesHint = Union[
     VersionConstraint,
     VersionRangeConstraint
 ]
-POETRY_VERSION = "1.8.1"
 
 
 @dataclass
@@ -618,7 +617,6 @@ def prepare_new_venv(output_root, installer):
     venv_path = os.path.join(output_root, ".venv")
 
     env = dict(os.environ.items())
-    env["POETRY_VERSION"] = POETRY_VERSION
     env["POETRY_HOME"] = poetry_home
     # Create poetry in output root
     subprocess.call(python_args + [poetry_script], env=env, cwd=output_root)
