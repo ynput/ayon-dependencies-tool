@@ -56,13 +56,20 @@ RUN curl https://pyenv.run | bash \
     && echo 'eval "$(pyenv virtualenv-init -)"' >> $HOME/init_pyenv.sh \
     && echo 'eval "$(pyenv init --path)"' >> $HOME/init_pyenv.sh
 
+ENV PYENV_ROOT="/root/.pyenv"
+ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:$PATH"
+
 # install python with pyenv
 RUN source $HOME/init_pyenv.sh \
-    && pyenv install ${PYTHON_VERSION}
+    && pyenv install ${PYTHON_VERSION} \
+    && pyenv global ${PYTHON_VERSION} \
+    && pyenv rehash
+
+RUN source /root/.bashrc && python --version
 
 COPY . /opt/ayon-dependencies-tool/
 
-RUN chmod +x /opt/ayon-dependencies-tool/tools/make.sh
+RUN chmod +x /opt/ayon-dependencies-tool/start.sh
 
 WORKDIR /opt/ayon-dependencies-tool
 
