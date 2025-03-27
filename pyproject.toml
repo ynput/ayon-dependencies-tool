@@ -17,7 +17,7 @@ ayon-python-api = "*"
 click = "^8.1"
 distro = { version="^1.9.0", markers = "sys_platform == 'linux'"}
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "^5.2"
 
 [build-system]
