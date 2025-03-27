@@ -56,6 +56,7 @@ function Install-Poetry() {
     }
     # Force POETRY_HOME to this directory
     $env:POETRY_HOME = $poetry_home_root
+    $env:POETRY_VERSION="2.0.1"
     (Invoke-WebRequest -Uri https://install.python-poetry.org/ -UseBasicParsing).Content | & $($python) -
 }
 
