@@ -6,6 +6,7 @@ authors = ["Ynput s.r.o. <info@ynput.io>"]
 package-mode = false
 
 [tool.poetry.dependencies]
+pkginfo = "^1.12"
 appdirs = "^1.4"
 poetry="~1.5.0"
 python = ">=3.9,<4.0"
