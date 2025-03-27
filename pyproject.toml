@@ -15,6 +15,7 @@ requests = "^2.25.1"
 toml = "^0.10.2" # for parsing pyproject.toml
 ayon-python-api = "*"
 click = "^8.1"
+distro = { version="^1.9.0", markers = "sys_platform == 'linux'"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"

@@ -1,0 +1,12 @@
+.git
+.venv
+.poetry
+output
+
+*.pyc
+.gitattributes
+.gitignore
+.python-version
+Dockerfile*
+example_env
+start.ps1

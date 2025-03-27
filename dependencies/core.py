@@ -29,6 +29,11 @@ from poetry.core.vcs.git import ParsedUrl
 import ayon_api
 from ayon_api import create_dependency_package_basename
 
+if platform.system().lower() == "linux":
+    import distro
+else:
+    distro = None
+
 from .utils import (
     run_subprocess,
     ZipFileLongPaths,
@@ -936,8 +941,10 @@ def prepare_zip_venv(venv_path, runtime_site_packages, output_root):
     Returns:
         (str) path to zipped venv
     """
-
-    zip_file_name = f"{create_dependency_package_basename()}.zip"
+    basename = create_dependency_package_basename()
+    if platform.system().lower() == "linux":
+        basename += f"-{distro.id()}{distro.major_version()}"
+    zip_file_name = f"{basename}.zip"
     venv_zip_path = os.path.join(output_root, zip_file_name)
     print(f"Zipping new venv to {venv_zip_path}")
     zip_venv(venv_path, runtime_site_packages, venv_zip_path)
