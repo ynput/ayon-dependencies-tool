@@ -40,3 +40,5 @@ Temporary Items
 # IDEA
 ######
 .idea/
+# ignore mkdocs build
+site/
