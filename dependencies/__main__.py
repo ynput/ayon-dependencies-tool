@@ -1,3 +1,10 @@
+"""
+::: mkdocs-click
+    :module: dependencies.cli
+    :command: main_cli
+    :prog_name: dependencies
+"""
+
 import os
 import sys
 
