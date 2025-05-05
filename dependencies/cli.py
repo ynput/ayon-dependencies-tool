@@ -1,4 +1,5 @@
 import os
+import sys
 import click
 import ayon_api
 from ayon_api.constants import SERVER_URL_ENV_KEY, SERVER_API_ENV_KEY
@@ -65,6 +66,17 @@ def list_bundles(server, api_key):
     if api_key:
         os.environ[SERVER_API_ENV_KEY] = api_key
 
+    server = os.environ.get(SERVER_URL_ENV_KEY)
+    api_key = os.environ.get(SERVER_API_ENV_KEY)
+    if not server:
+        print("AYON server url not set.")
+        sys.exit(1)
+
+    if not api_key:
+        print("AYON api key not set.")
+        sys.exit(1)
+
+    print(f"Connecting to AYON server {server}...")
     if ayon_api.create_connection() is False:
         raise RuntimeError("Could not connect to server.")
 
