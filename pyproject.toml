@@ -3,8 +3,10 @@ name = "ayon-dependencies-tool"
 version = "1.1.1-dev.1"
 description = "Dependencies tool for AYON"
 authors = ["Ynput s.r.o. <info@ynput.io>"]
+package-mode = false
 
 [tool.poetry.dependencies]
+pkginfo = "^1.12"
 appdirs = "^1.4"
 poetry="~1.5.0"
 python = ">=3.9,<4.0"
@@ -16,7 +18,7 @@ ayon-python-api = "*"
 click = "^8.1"
 distro = { version="^1.9.0", markers = "sys_platform == 'linux'"}
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "^5.2"
 
 [build-system]

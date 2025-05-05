@@ -53,7 +53,8 @@ ConstraintClassesHint = Union[
     VersionConstraint,
     VersionRangeConstraint
 ]
-POETRY_VERSION = "1.8.1"
+
+POETRY_VERSION = "2.0.1"
 
 
 @dataclass
