@@ -106,7 +106,7 @@ function CreatePackageWithDocker {
 
     Write-Host ">>> Running Docker build ..."
     $containerName = Get-Date -UFormat %Y%m%dT%H%M%SZ
-    docker run --name $containerName -it --entrypoint "/bin/bash" $imageName -l -c "/opt/ayon-dependencies-tool/start.sh create -b $bundleName"
+    docker run --name $containerName -it --entrypoint "/bin/bash" $imageName -l -c "/opt/ayon-dependencies-tool/start.sh create -b $bundleName --server $Env:AYON_SERVER_URL --api-key $Env:AYON_API_KEY"
     docker container rm $containerName
 
     if ($LASTEXITCODE -ne 0) {
@@ -195,6 +195,7 @@ function main {
         & "$poetry_home_root\bin\poetry" run python "$($repo_root)\dependencies" list-bundles @arguments
     } elseif ($FunctionName -eq "dockercreate") {
         Change-Cwd
+        set_env
         CreatePackageWithDocker @arguments
     } elseif ($FunctionName -eq "builddocker") {
         Change-Cwd
