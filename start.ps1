@@ -12,6 +12,7 @@ $repo_root_rel = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 $repo_root = (Get-Item $repo_root_rel).FullName
 $poetry_home_root="$repo_root\.poetry"
 
+$POETRY_VERSION="2.0.1"
 $TOOL_VERSION = Invoke-Expression -Command "python -c ""import os;import sys;content={};f=open(r'$($current_dir)/version.py');exec(f.read(),content);f.close();print(content['__version__'])"""
 
 
@@ -56,7 +57,7 @@ function Install-Poetry() {
     }
     # Force POETRY_HOME to this directory
     $env:POETRY_HOME = $poetry_home_root
-    $env:POETRY_VERSION="2.0.1"
+    $env:POETRY_VERSION = $POETRY_VERSION
     (Invoke-WebRequest -Uri https://install.python-poetry.org/ -UseBasicParsing).Content | & $($python) -
 }
 
@@ -129,7 +130,17 @@ function Restore-Cwd() {
 
 function install {
     # install dependencies for tool
-     if (-not (Test-Path -PathType Container -Path "$($poetry_home_root)\bin")) {
+    if (Test-Path -PathType Container -Path "$($poetry_home_root)\bin") {
+        $result = & "$poetry_home_root\bin\poetry" --version
+        if (-not ($result.Contains($POETRY_VERSION))) {
+            Write-Host ">>> Already installed Poetry has wrong version."
+            Write-Host ">>> - Installed: $($result)"
+            Write-Host ">>> - Expected:  $($POETRY_VERSION)"
+            Write-Host ">>> Reinstalling Poetry ..."
+            Remove-Item -Recurse -Force "$($poetry_home_root)"
+        }
+    }
+    if (-not (Test-Path -PathType Container -Path "$($poetry_home_root)\bin")) {
         Install-Poetry
     }
 

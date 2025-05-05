@@ -34,6 +34,7 @@ BIWhite='\033[1;97m'      # White
 
 args=$@
 
+poetry_version="2.0.1"
 poetry_verbosity=""
 while :; do
   case $1 in
@@ -104,7 +105,7 @@ detect_python () {
 install_poetry () {
   echo -e "${BIGreen}>>>${RST} Installing Poetry ..."
   export POETRY_HOME="$poetry_home_root"
-  export POETRY_VERSION="2.0.1"
+  export POETRY_VERSION="$poetry_version"
   command -v curl >/dev/null 2>&1 || { echo -e "${BIRed}!!!${RST}${BIYellow} Missing ${RST}${BIBlue}curl${BIYellow} command.${RST}"; return 1; }
   curl -sSL https://install.python-poetry.org/ | python -
 }
@@ -132,7 +133,15 @@ install () {
   pushd "$repo_root" > /dev/null || return > /dev/null
 
   echo -e "${BIGreen}>>>${RST} Reading Poetry ... \c"
-  if [ -f "$poetry_home_root/bin/poetry" ]; then
+  poetry_path="$poetry_home_root/bin/poetry"
+  if [ -f $poetry_path ]; then
+    installed_poetry_version="$({$poetry_path} --version)"
+    if [[ $installed_poetry_version =~ $poetry_version ]]; then
+       rm -rf $poetry_home_root
+    fi
+  fi
+
+  if [ -f $poetry_path ]; then
     echo -e "${BIGreen}OK${RST}"
   else
     echo -e "${BIYellow}NOT FOUND${RST}"
@@ -145,7 +154,7 @@ install () {
     echo -e "${BIGreen}>>>${RST} Installing dependencies ..."
   fi
 
-  "$poetry_home_root/bin/poetry" install --no-root $poetry_verbosity || { echo -e "${BIRed}!!!${RST} Poetry environment installation failed"; return 1; }
+  $poetry_path install --no-root $poetry_verbosity || { echo -e "${BIRed}!!!${RST} Poetry environment installation failed"; return 1; }
   if [ $? -ne 0 ] ; then
     echo -e "${BIRed}!!!${RST} Virtual environment creation failed."
     return 1
@@ -158,7 +167,7 @@ install () {
   # cx_freeze will crash on missing __pychache__ on these but
   # reinstalling them solves the problem.
   echo -e "${BIGreen}>>>${RST} Post-venv creation fixes ..."
-  "$poetry_home_root/bin/poetry" run python -m pip install --disable-pip-version-check --force-reinstall pip
+  $poetry_path run python -m pip install --disable-pip-version-check --force-reinstall pip
 }
 
 set_env () {
