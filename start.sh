@@ -137,6 +137,10 @@ install () {
   if [ -f $poetry_path ]; then
     installed_poetry_version="$({$poetry_path} --version)"
     if [[ $installed_poetry_version =~ $poetry_version ]]; then
+       echo -e "${BIGreen}>>>${RST} Already installed Poetry has wrong version."
+       echo -e "${BIGreen}>>>${RST} - Installed: $($installed_poetry_version)"
+       echo -e "${BIGreen}>>>${RST} - Expected:  $($poetry_version)"
+       echo -e "${BIGreen}>>>${RST} Reinstalling Poetry ..."
        rm -rf $poetry_home_root
     fi
   fi
