@@ -336,7 +336,7 @@ def _merge_dependency(
             f"Cannot result {dependency} with"
             f" {dep_info} for {addon_name}"
         )
-    return str(dep_info_c.union(resolved_vers))
+    return str(dep_info_c.intersect(resolved_vers))
 
 
 def merge_tomls_dependencies(
