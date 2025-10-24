@@ -596,12 +596,12 @@ class VenvInfo:
         self.python_version = python_version
 
 
-def prepare_new_venv(output_root, installer):
+def prepare_new_venv(output_root, python_version):
     """Let Poetry create new venv in 'venv_folder' from 'full_toml_data'.
 
     Args:
         output_root (str): Path where venv should be created.
-        installer (dict[str, Any]): Installer metadata.
+        python_version (str): Python version to use.
 
     Raises:
         RuntimeError: Exception is raised if process finished with nonzero
@@ -609,8 +609,6 @@ def prepare_new_venv(output_root, installer):
     """
 
     print(f"Preparing new venv in {output_root}")
-
-    python_version = installer["pythonVersion"]
 
     python_args = get_python_arguments(output_root, python_version)
 
@@ -1260,7 +1258,7 @@ def _create_package(
         bundle_addons_toml,
     )
 
-    venv_info = prepare_new_venv(output_root, installer)
+    venv_info = prepare_new_venv(output_root, python_version)
 
     solve_dependencies(full_toml_data, output_root, venv_info.venv_path)
 
