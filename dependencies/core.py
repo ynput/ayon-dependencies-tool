@@ -10,7 +10,7 @@ import subprocess
 import collections
 import shutil
 
-from typing import Dict, Union, Any, List
+from typing import Union, Any, Optional
 from packaging import version
 from dataclasses import dataclass
 
@@ -60,8 +60,8 @@ POETRY_VERSION = "2.0.1"
 @dataclass
 class Bundle:
     name: str
-    addons: Dict[str, str]
-    dependency_packages: Dict[str, str]
+    addons: dict[str, str]
+    dependency_packages: dict[str, str]
     installer_version: Union[str, None]
 
 
@@ -90,7 +90,7 @@ def get_poetry_install_script() -> str:
 
 def get_pyenv_arguments(
     output_root: str, python_version: str
-) -> Union[List[str], None]:
+) -> Union[list[str], None]:
     """Use pyenv to install python version and use for venv creation.
 
     Usage of pyenv is ideal as it allows to properly install runtime
@@ -126,7 +126,7 @@ def get_pyenv_arguments(
     return [python_path]
 
 
-def get_python_arguments(output_root: str, python_version: str) -> List[str]:
+def get_python_arguments(output_root: str, python_version: str) -> list[str]:
     """Get arguments to run python.
 
     By default, is trying to use 'pyenv' to install python version and use
@@ -154,7 +154,7 @@ def get_python_arguments(output_root: str, python_version: str) -> List[str]:
     return [python_path]
 
 
-def get_bundles(con: ayon_api.ServerAPI) -> Dict[str, Bundle]:
+def get_bundles(con: ayon_api.ServerAPI) -> dict[str, Bundle]:
     """Provides dictionary with available bundles
 
     Returns:
@@ -176,7 +176,7 @@ def get_bundles(con: ayon_api.ServerAPI) -> Dict[str, Bundle]:
     return bundles_by_name
 
 
-def get_all_addon_tomls(con: ayon_api.ServerAPI) -> Dict[str, Dict[str, Any]]:
+def get_all_addon_tomls(con: ayon_api.ServerAPI) -> dict[str, dict[str, Any]]:
     """Provides list of dict containing addon tomls.
 
     Returns:
@@ -201,7 +201,7 @@ def get_all_addon_tomls(con: ayon_api.ServerAPI) -> Dict[str, Dict[str, Any]]:
 
 def get_bundle_addons_tomls(
     con: ayon_api.ServerAPI, bundle: Bundle
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """Query addons for `bundle` to get their python dependencies.
 
     Returns:
@@ -230,7 +230,7 @@ def find_installer_by_name(
     bundle_name: str,
     installer_name: str,
     platform_name: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     for installer in con.get_installers()["installers"]:
         if (
             installer["platform"] == platform_name
@@ -240,7 +240,7 @@ def find_installer_by_name(
     raise ValueError(f"{bundle_name} must have installer present.")
 
 
-def get_installer_toml(installer: Dict[str, Any]) -> Dict[str, Any]:
+def get_installer_toml(installer: dict[str, Any]) -> dict[str, Any]:
     """Returns dict with format matching of .toml file for `installer_name`.
 
     Queries info from server for `bundle_name` and its `installer_name`,
@@ -281,7 +281,7 @@ def get_installer_toml(installer: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def is_valid_toml(toml: Dict[str, Any]) -> bool:
+def is_valid_toml(toml: dict[str, Any]) -> bool:
     """Validates that 'toml' contains all required fields.
 
     Args:
@@ -340,10 +340,10 @@ def _merge_dependency(
 
 
 def merge_tomls_dependencies(
-    main_toml: Dict[str, Dict[str, Any]],
-    addon_toml: Dict[str, Dict[str, Any]],
+    main_toml: dict[str, dict[str, Any]],
+    addon_toml: dict[str, dict[str, Any]],
     addon_name: str,
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """Add dependencies from 'addon_toml' to 'main_toml'.
 
     Looks for mininimal compatible version from both tomls.
@@ -390,11 +390,10 @@ def merge_tomls_dependencies(
 
 
 def merge_tomls_runtime(
-    main_toml: Dict[str, Dict[str, Any]],
-    addon_toml: Dict[str, Dict[str, Any]],
+    main_toml: dict[str, dict[str, Any]],
+    addon_toml: dict[str, dict[str, Any]],
     addon_name: str,
-    platform_name: str,
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """Add dependencies from 'addon_toml' to 'main_toml'.
 
     Looks for mininimal compatible version from both tomls.
@@ -450,9 +449,9 @@ def merge_tomls_runtime(
 
 
 def _get_correct_version(
-    main_version: Union[str, Dict[str, Any], ConstraintClassesHint],
-    dep_version: Union[str, Dict[str, Any]]
-) -> Union[ConstraintClassesHint, Dict[str, Any]]:
+    main_version: Union[str, dict[str, Any], ConstraintClassesHint],
+    dep_version: Union[str, dict[str, Any]]
+) -> Union[ConstraintClassesHint, dict[str, Any]]:
     """Return resolved version from two version (constraint).
 
     Warning:
@@ -513,7 +512,7 @@ def _version_parse(version_value):
     return version.parse(version_value)
 
 
-def get_full_toml(base_toml_data, addon_tomls, platform_name):
+def get_full_toml(base_toml_data, addon_tomls):
     """Loops through list of local addon folder paths to create full .toml
 
     Full toml is used to calculate set of python dependencies for all enabled
@@ -956,8 +955,8 @@ def prepare_zip_venv(venv_path, runtime_site_packages, output_root):
 
 
 def get_applicable_package(
-    con: ayon_api.ServerAPI, new_toml: Dict[str, Any]
-) -> Union[Dict[str, Any], None]:
+    con: ayon_api.ServerAPI, new_toml: dict[str, Any]
+) -> Union[dict[str, Any], None]:
     """Compares existing dependency packages to find matching.
 
     One dep package could contain same versions of python dependencies for
@@ -983,7 +982,7 @@ def get_applicable_package(
             return package
 
 
-def get_python_modules(venv_path: str) -> Dict[str, str]:
+def get_python_modules(venv_path: str) -> dict[str, str]:
     """Uses pip freeze to get installed libraries from `venv_path`.
 
     Args:
@@ -1046,7 +1045,7 @@ def prepare_package_data(
     venv_zip_path: str,
     bundle: Bundle,
     platform_name: str,
-    runtime_dependencies: Dict[str, str],
+    runtime_dependencies: dict[str, str],
 ):
     """Creates package data for server.
 
@@ -1176,7 +1175,7 @@ def is_file_deletable(filepath):
 
 def get_runtime_dependencies(
     runtime_site_packages: str, addons_venv_path: str
-) -> Dict[str, str]:
+) -> dict[str, str]:
     python_executable = get_venv_executable(addons_venv_path, "python")
     script_path = os.path.join(PACKAGE_ROOT, "_runtime_deps.py")
 
