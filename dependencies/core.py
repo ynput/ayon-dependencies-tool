@@ -56,6 +56,8 @@ ConstraintClassesHint = Union[
 
 POETRY_VERSION = "2.0.1"
 
+PLATFORM_NAME = platform.system().lower()
+
 
 @dataclass
 class Bundle:
@@ -109,7 +111,7 @@ def get_pyenv_arguments(
         return
     print(f"Installing Python {python_version} with pyenv")
     install_args = [pyenv_path, "install", python_version, "--skip-existing"]
-    if platform.system().lower() == "windows":
+    if PLATFORM_NAME == "windows":
         install_args.append("--quiet")
     result = subprocess.run(install_args)
     if result.returncode != 0:
@@ -229,11 +231,10 @@ def find_installer_by_name(
     con: ayon_api.ServerAPI,
     bundle_name: str,
     installer_name: str,
-    platform_name: str,
 ) -> dict[str, Any]:
     for installer in con.get_installers()["installers"]:
         if (
-            installer["platform"] == platform_name
+            installer["platform"] == PLATFORM_NAME
             and installer["version"] == installer_name
         ):
             return installer
@@ -311,7 +312,6 @@ def is_valid_toml(toml: dict[str, Any]) -> bool:
 def _merge_dependency(
     main_dep_info,
     dep_info,
-    platform_name,
     dependency,
     addon_name
 ):
@@ -319,8 +319,8 @@ def _merge_dependency(
         return dep_info
 
     if isinstance(main_dep_info, dict):
-        if platform_name in main_dep_info:
-            main_dep_info = main_dep_info[platform_name]
+        if PLATFORM_NAME in main_dep_info:
+            main_dep_info = main_dep_info[PLATFORM_NAME]
 
     resolved_vers = _get_correct_version(main_dep_info, dep_info)
     if not isinstance(resolved_vers, ConstraintClasses):
@@ -421,8 +421,8 @@ def merge_tomls_runtime(
     main_runtime = main_toml["ayon"]["runtimeDependencies"]
     for dependency, dep_info in addon_poetry.items():
         if isinstance(dep_info, dict):
-            if platform_name in dep_info:
-                dep_info = dep_info[platform_name]
+            if PLATFORM_NAME in dep_info:
+                dep_info = dep_info[PLATFORM_NAME]
 
             if "version" in dep_info:
                 dep_info = dep_info["version"]
@@ -431,7 +431,6 @@ def merge_tomls_runtime(
             main_dependencies[dependency] = _merge_dependency(
                 main_dependencies[dependency],
                 dep_info,
-                platform_name,
                 dependency,
                 addon_name
             )
@@ -440,7 +439,6 @@ def merge_tomls_runtime(
         main_runtime[dependency] = _merge_dependency(
             main_runtime.get(dependency),
             dep_info,
-            platform_name,
             dependency,
             addon_name
         )
@@ -522,7 +520,6 @@ def get_full_toml(base_toml_data, addon_tomls):
         base_toml_data (dict[str, Any]): Content of pyproject.toml from
             ayon-launcher installer.
         addon_tomls (dict[str, Any]): Content of addon pyproject.toml
-        platform_name (str): Platform name.
 
     Returns:
         (dict) updated base .toml
@@ -707,7 +704,7 @@ def install_poetry(
         venv_info.poetry_bin,
         venv_info.poetry_env
     )
-    if platform.system().lower() == "windows":
+    if PLATFORM_NAME == "windows":
         runtime_site_packages = os.path.join(
             runtime_root, "Lib", "site-packages"
         )
@@ -944,7 +941,7 @@ def prepare_zip_venv(venv_path, runtime_site_packages, output_root):
         (str) path to zipped venv
     """
     basename = create_dependency_package_basename()
-    if platform.system().lower() == "linux":
+    if PLATFORM_NAME == "linux":
         basename += f"-{distro.id()}{distro.major_version()}"
     zip_file_name = f"{basename}.zip"
     venv_zip_path = os.path.join(output_root, zip_file_name)
@@ -1044,7 +1041,6 @@ def calculate_hash(filepath):
 def prepare_package_data(
     venv_zip_path: str,
     bundle: Bundle,
-    platform_name: str,
     runtime_dependencies: dict[str, str],
 ):
     """Creates package data for server.
@@ -1054,7 +1050,6 @@ def prepare_package_data(
     Args:
         venv_zip_path (str): Local path to zipped venv.
         bundle (Bundle): Bundle object with all data.
-        platform_name (str): Platform name.
         runtime_dependencies (dict[str, str]): Runtime dependencies with
             requested versions.
 
@@ -1078,7 +1073,7 @@ def prepare_package_data(
         "checksum": checksum,
         "checksum_algorithm": "sha256",
         "file_size": os.stat(venv_zip_path).st_size,
-        "platform_name": platform_name,
+        "platform_name": PLATFORM_NAME,
     }
 
 
@@ -1255,13 +1250,14 @@ def _create_package(
         print(f"Bundle '{bundle.name}' does not have set installer.")
         return None
 
-    platform_name = platform.system().lower()
     installer = find_installer_by_name(
-        con, bundle_name, bundle.installer_version, platform_name
+        con, bundle_name, bundle.installer_version
     )
     installer_toml_data = get_installer_toml(installer)
+
     full_toml_data = get_full_toml(
-        installer_toml_data, bundle_addons_toml, platform_name
+        installer_toml_data,
+        bundle_addons_toml,
     )
 
     venv_info = prepare_new_venv(output_root, installer)
@@ -1297,7 +1293,9 @@ def _create_package(
     )
 
     package_data = prepare_package_data(
-        venv_zip_path, bundle, platform_name, runtime_dependencies
+        venv_zip_path,
+        bundle,
+        runtime_dependencies
     )
     if destination_root:
         stored_package_to_dir(
