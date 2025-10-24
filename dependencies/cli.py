@@ -4,7 +4,10 @@ import click
 import ayon_api
 from ayon_api.constants import SERVER_URL_ENV_KEY, SERVER_API_ENV_KEY
 
-from .core import create_package, get_bundles
+from .core import(
+    get_bundles,
+    create_bundle_package,
+)
 
 
 @click.group()
@@ -43,7 +46,7 @@ def create(bundle_name, skip_upload, output_dir, server, api_key):
     if ayon_api.create_connection() is False:
         raise RuntimeError("Could not connect to server.")
 
-    create_package(
+    create_bundle_package(
         bundle_name,
         skip_upload=skip_upload,
         output_dir=output_dir
