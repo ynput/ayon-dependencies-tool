@@ -1258,7 +1258,7 @@ def _create_package(
         bundle_addons_toml,
     )
 
-    venv_info = prepare_new_venv(output_root, python_version)
+    venv_info = prepare_new_venv(output_root, installer["pythonVersion"])
 
     solve_dependencies(full_toml_data, output_root, venv_info.venv_path)
 
