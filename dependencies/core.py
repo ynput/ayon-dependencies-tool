@@ -316,7 +316,7 @@ def _merge_dependency(
     addon_name
 ):
     if main_dep_info is None:
-        return dep_info
+        return _filter_platform_dep(dep_info)
 
     if isinstance(main_dep_info, dict):
         if PLATFORM_NAME in main_dep_info:
@@ -389,6 +389,64 @@ def merge_tomls_dependencies(
     return main_toml
 
 
+def _fill_platform_runtime(deps: dict[str, Any]) -> None:
+    """Parse runtime dependencies by platform.
+
+    For example if an addon defines '[ayon.runtimeDependencies.windows]'
+        section in pyproject.toml it should install the dependencies only for
+        windows dependency packages.
+        
+    Pops out all platform dependencies 'windows', 'linux' and 'darwin' and
+        use the current platform values to update 'deps' itself.
+
+    Args:
+        deps (dict[str, Any]): Dependency packages information. Mutable, can
+            be modified during function call.
+
+    """
+    if not isinstance(deps, dict):
+        return
+    _windows_runtime = deps.pop("windows", {})
+    _linux_runtime = deps.pop("linux", {})
+    _darwin_runtime = deps.pop("darwin", {})
+    current_runtime = {}
+    if PLATFORM_NAME == "windows":
+        current_runtime = _windows_runtime
+    elif PLATFORM_NAME == "darwin":
+        current_runtime = _darwin_runtime
+    elif PLATFORM_NAME == "linux":
+        current_runtime = _linux_runtime
+    deps.update(current_runtime)
+
+
+def _filter_platform_dep(dep_info: Any) -> Any:
+    """Filter dependency.
+
+    Args:
+        dep_info (Any): Dependency info.
+
+    Returns:
+        Any: Filtered dependency. None if was filtered out.
+
+    """
+    # Keep as is if is not 'dict'
+    if not isinstance(dep_info, dict):
+        return dep_info
+
+    # Look for platform value in the info
+    platform_value = dep_info.get("platform")
+    if platform_value:
+        platform_value = platform_value.lower()
+        if platform_value != PLATFORM_NAME:
+            if PLATFORM_NAME != "windows":
+                return None
+            # Windows might use 'win32' value instead for platform
+            if platform_value != "win32":
+                return None
+
+    return dep_info
+
+
 def merge_tomls_runtime(
     main_toml: dict[str, dict[str, Any]],
     addon_toml: dict[str, dict[str, Any]],
@@ -415,18 +473,23 @@ def merge_tomls_runtime(
     if not addon_poetry:
         return main_toml
 
+    _fill_platform_runtime(addon_poetry)
     main_dependencies = (
         main_toml["tool"]["poetry"].setdefault("dependencies", {})
     )
     main_runtime = main_toml["ayon"]["runtimeDependencies"]
+    _fill_platform_runtime(main_runtime)
+
     for dependency, dep_info in addon_poetry.items():
-        if isinstance(dep_info, dict):
-            if PLATFORM_NAME in dep_info:
-                dep_info = dep_info[PLATFORM_NAME]
+        dep_info = _filter_platform_dep(dep_info)
+        if dep_info is None:
+            continue
 
-            if "version" in dep_info:
-                dep_info = dep_info["version"]
+        if isinstance(dep_info, dict) and "version" in dep_info:
+            dep_info = dep_info["version"]
 
+        # WARNING This is not safe. It can effectively pop out already added
+        #   dependency and there is no way to figure it out.
         if dependency in main_dependencies:
             main_dependencies[dependency] = _merge_dependency(
                 main_dependencies[dependency],
