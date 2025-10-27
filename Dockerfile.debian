@@ -3,6 +3,7 @@ FROM debian:bullseye AS builder
 ARG PYTHON_VERSION=3.9.13
 ARG BUILD_DATE
 ARG VERSION
+ARG DEBIAN_FRONTEND=noninteractive
 
 LABEL description="Docker Image to create dependency package for Debian installer"
 LABEL org.opencontainers.image.name="ynput/ayon-dependencies-debian"
@@ -15,7 +16,9 @@ LABEL org.opencontainers.image.version=$VERSION
 
 USER root
 
-ARG DEBIAN_FRONTEND=noninteractive
+RUN mkdir /opt/ayon-dependencies-tool
+COPY . /opt/ayon-dependencies-tool/
+RUN chmod +x /opt/ayon-dependencies-tool/start.sh
 
 # update base
 RUN apt-get update \
@@ -45,32 +48,25 @@ RUN apt-get update \
 
 SHELL ["/bin/bash", "-c"]
 
-
-RUN mkdir /opt/ayon-dependencies-tool
-
 # download and install pyenv
-RUN curl https://pyenv.run | bash \
-    && echo 'export PATH="$HOME/.pyenv/bin:$PATH"'>> $HOME/init_pyenv.sh \
-    && echo 'eval "$(pyenv init -)"' >> $HOME/init_pyenv.sh \
-    && echo 'eval "$(pyenv virtualenv-init -)"' >> $HOME/init_pyenv.sh \
-    && echo 'eval "$(pyenv init --path)"' >> $HOME/init_pyenv.sh
+RUN curl https://pyenv.run | bash
+RUN echo 'export PATH="$HOME/.pyenv/bin:$PATH"'>> $HOME/.bash_profile \
+    && echo 'eval "$(pyenv init -)"' >> $HOME/.bash_profile \
+    && echo 'eval "$(pyenv virtualenv-init -)"' >> $HOME/.bash_profile \
+    && echo 'eval "$(pyenv init --path)"' >> $HOME/.bash_profile
 
 # install python with pyenv
-RUN source $HOME/init_pyenv.sh \
+RUN source $HOME/.bash_profile \
     && pyenv install ${PYTHON_VERSION}
-
-COPY . /opt/ayon-dependencies-tool/
-
-RUN chmod +x /opt/ayon-dependencies-tool/tools/make.sh
 
 WORKDIR /opt/ayon-dependencies-tool
 
 # set local python version
-RUN source $HOME/init_pyenv.sh \
+RUN source $HOME/.bash_profile \
     && pyenv local ${PYTHON_VERSION}
 
 # create venv and create dependency package
-RUN source $HOME/.bashrc \
+RUN source $HOME/.bash_profile \
     && ./start.sh install
 
 CMD [/opt/ayon-dependencies-tool/start.sh, listen]
