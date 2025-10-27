@@ -389,7 +389,21 @@ def merge_tomls_dependencies(
     return main_toml
 
 
-def _fill_platform_runtime(deps) -> None:
+def _fill_platform_runtime(deps: dict[str, Any]) -> None:
+    """Parse runtime dependencies by platform.
+
+    For example if an addon defines '[ayon.runtimeDependencies.windows]'
+        section in pyproject.toml it should install the dependencies only for
+        windows dependency packages.
+        
+    Pops out all platform dependencies 'windows', 'linux' and 'darwin' and
+        use the current platform values to update 'deps' itself.
+
+    Args:
+        deps (dict[str, Any]): Dependency packages information. Mutable, can
+            be modified during function call.
+
+    """
     if not isinstance(deps, dict):
         return
     _windows_runtime = deps.pop("windows", {})
@@ -405,16 +419,28 @@ def _fill_platform_runtime(deps) -> None:
     deps.update(current_runtime)
 
 
-def _filter_platform_dep(dep_info) -> Optional[dict]:
+def _filter_platform_dep(dep_info: Any) -> Any:
+    """Filter dependency.
+
+    Args:
+        dep_info (Any): Dependency info.
+
+    Returns:
+        Any: Filtered dependency. None if was filtered out.
+
+    """
+    # Keep as is if is not 'dict'
     if not isinstance(dep_info, dict):
         return dep_info
 
+    # Look for platform value in the info
     platform_value = dep_info.get("platform")
     if platform_value:
         platform_value = platform_value.lower()
         if platform_value != PLATFORM_NAME:
             if PLATFORM_NAME != "windows":
                 return None
+            # Windows might use 'win32' value instead for platform
             if platform_value != "win32":
                 return None
 
