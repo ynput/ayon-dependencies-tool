@@ -1,3 +1,3 @@
 # -*- coding: utf-8 -*-
 """Package declaring AYON dependencies tool version."""
-__version__ = "1.1.3-dev"
+__version__ = "1.1.3"
