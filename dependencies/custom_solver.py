@@ -1,6 +1,8 @@
 import os
 import sys
 import copy
+import collections
+from typing import Any
 from pathlib import Path
 
 import toml
@@ -51,7 +53,11 @@ def create_io() -> IO:
     return io
 
 
-def solve_dependencies(full_toml_data, output_root: str, venv_path: str):
+def solve_dependencies(
+    full_toml_data: dict[str, Any],
+    output_root: str,
+    venv_path: str,
+) -> None:
     output_root = Path(output_root)
     venv_path = Path(venv_path)
 
@@ -60,31 +66,73 @@ def solve_dependencies(full_toml_data, output_root: str, venv_path: str):
     if not runtime_dependencies:
         return
 
+    # Prepare all packages of all dependencies together
     all_main_dependencies = all_dependencies["tool"]["poetry"]["dependencies"]
     all_main_dependencies.update(runtime_dependencies)
-    resolved_all_versions = _solve_dependencies(
+    all_solved_packages = _solve_dependencies(
         all_dependencies, output_root, venv_path
     )
+    packages_by_name = {
+        package.name.lower(): package
+        for package in all_solved_packages
+    }
 
-    main_dependencies = full_toml_data["tool"]["poetry"]["dependencies"]
-    for package_name in tuple(main_dependencies.keys()):
-        version = resolved_all_versions.get(package_name)
-        if version is None:
-            continue
-        main_dependencies[package_name] = version
-
-    resolved_base_versions = _solve_dependencies(
-        full_toml_data, output_root, venv_path
+    # Fill up the main dependencies with resolved versions
+    main_dependencies = {}
+    main_dep_names = set()
+    deps_queue = collections.deque(
+        full_toml_data["tool"]["poetry"]["dependencies"]
     )
-    runtime_dependencies = full_toml_data["ayon"]["runtimeDependencies"]
-    for package_name, package_version in resolved_base_versions.items():
-        if package_name not in main_dependencies:
-            main_dependencies[package_name] = package_version
+    while deps_queue:
+        dep_name = deps_queue.popleft()
+        dep_name_low = dep_name.lower()
+        if dep_name_low == "python":
+            continue
 
-        runtime_dependencies.pop(package_name, None)
+        if dep_name_low in main_dep_names:
+            continue
+        main_dep_names.add(dep_name_low)
+
+        package = packages_by_name.get(dep_name_low)
+        if package is None:
+            dep_name_low_t = dep_name_low.replace("_", "-")
+            package = packages_by_name.get(dep_name_low_t)
+            if package is None:
+                dep_name_low_t = dep_name_low.replace("-", "_")
+                package = packages_by_name.get(dep_name_low_t)
+
+        if package is None:
+            raise RuntimeError(
+                f"Failed to find dependency '{dep_name}'"
+                " in resolved packages."
+            )
+
+        version = _package_to_version(package)
+        main_dependencies[package.name] = version
+
+        for dep in package.requires:
+            deps_queue.append(dep.name)
+
+    runtime_dependencies = {}
+    for package_name, package in packages_by_name.items():
+        if package_name in main_dep_names:
+            continue
+        runtime_dependencies[package.name] = _package_to_version(package)
+
+    full_toml_data["ayon"]["runtimeDependencies"] = runtime_dependencies
 
 
-def _solve_dependencies(toml_data, output_root: Path, venv_path: Path):
+def _package_to_version(package):
+    if package.source_type not in ("directory", "file", "url", "git"):
+        return package.version.text
+    return None
+
+
+def _solve_dependencies(
+    toml_data: dict[str, Any],
+    output_root: Path,
+    venv_path: Path,
+):
     pyproject_toml_path = output_root / "pyproject.toml"
     with open(pyproject_toml_path, "w") as stream:
         toml.dump(toml_data, stream)
@@ -106,16 +154,11 @@ def _solve_dependencies(toml_data, output_root: Path, venv_path: Path):
         disable_cache=poetry.disable_cache,
     )
     installer.run()
-    output = {}
-    for op in installer.ops:
-        package = op.package
-        version = None
-        if package.source_type not in ("directory", "file", "url", "git"):
-            version = package.version.text
-
-        output[package.name] = version
     os.remove(pyproject_toml_path)
-    return output
+    return [
+        op.package
+        for op in installer.ops
+    ]
 
 
 class CustomResolver(Installer):

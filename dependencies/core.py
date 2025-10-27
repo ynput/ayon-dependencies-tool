@@ -10,7 +10,7 @@ import subprocess
 import collections
 import shutil
 
-from typing import Dict, Union, Any, List
+from typing import Union, Any, Optional
 from packaging import version
 from dataclasses import dataclass
 
@@ -56,12 +56,14 @@ ConstraintClassesHint = Union[
 
 POETRY_VERSION = "2.0.1"
 
+PLATFORM_NAME = platform.system().lower()
+
 
 @dataclass
 class Bundle:
     name: str
-    addons: Dict[str, str]
-    dependency_packages: Dict[str, str]
+    addons: dict[str, str]
+    dependency_packages: dict[str, str]
     installer_version: Union[str, None]
 
 
@@ -90,7 +92,7 @@ def get_poetry_install_script() -> str:
 
 def get_pyenv_arguments(
     output_root: str, python_version: str
-) -> Union[List[str], None]:
+) -> Union[list[str], None]:
     """Use pyenv to install python version and use for venv creation.
 
     Usage of pyenv is ideal as it allows to properly install runtime
@@ -109,7 +111,7 @@ def get_pyenv_arguments(
         return
     print(f"Installing Python {python_version} with pyenv")
     install_args = [pyenv_path, "install", python_version, "--skip-existing"]
-    if platform.system().lower() == "windows":
+    if PLATFORM_NAME == "windows":
         install_args.append("--quiet")
     result = subprocess.run(install_args)
     if result.returncode != 0:
@@ -126,7 +128,7 @@ def get_pyenv_arguments(
     return [python_path]
 
 
-def get_python_arguments(output_root: str, python_version: str) -> List[str]:
+def get_python_arguments(output_root: str, python_version: str) -> list[str]:
     """Get arguments to run python.
 
     By default, is trying to use 'pyenv' to install python version and use
@@ -154,7 +156,7 @@ def get_python_arguments(output_root: str, python_version: str) -> List[str]:
     return [python_path]
 
 
-def get_bundles(con: ayon_api.ServerAPI) -> Dict[str, Bundle]:
+def get_bundles(con: ayon_api.ServerAPI) -> dict[str, Bundle]:
     """Provides dictionary with available bundles
 
     Returns:
@@ -176,7 +178,7 @@ def get_bundles(con: ayon_api.ServerAPI) -> Dict[str, Bundle]:
     return bundles_by_name
 
 
-def get_all_addon_tomls(con: ayon_api.ServerAPI) -> Dict[str, Dict[str, Any]]:
+def get_all_addon_tomls(con: ayon_api.ServerAPI) -> dict[str, dict[str, Any]]:
     """Provides list of dict containing addon tomls.
 
     Returns:
@@ -201,7 +203,7 @@ def get_all_addon_tomls(con: ayon_api.ServerAPI) -> Dict[str, Dict[str, Any]]:
 
 def get_bundle_addons_tomls(
     con: ayon_api.ServerAPI, bundle: Bundle
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """Query addons for `bundle` to get their python dependencies.
 
     Returns:
@@ -229,18 +231,17 @@ def find_installer_by_name(
     con: ayon_api.ServerAPI,
     bundle_name: str,
     installer_name: str,
-    platform_name: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     for installer in con.get_installers()["installers"]:
         if (
-            installer["platform"] == platform_name
+            installer["platform"] == PLATFORM_NAME
             and installer["version"] == installer_name
         ):
             return installer
     raise ValueError(f"{bundle_name} must have installer present.")
 
 
-def get_installer_toml(installer: Dict[str, Any]) -> Dict[str, Any]:
+def get_installer_toml(installer: dict[str, Any]) -> dict[str, Any]:
     """Returns dict with format matching of .toml file for `installer_name`.
 
     Queries info from server for `bundle_name` and its `installer_name`,
@@ -281,7 +282,7 @@ def get_installer_toml(installer: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def is_valid_toml(toml: Dict[str, Any]) -> bool:
+def is_valid_toml(toml: dict[str, Any]) -> bool:
     """Validates that 'toml' contains all required fields.
 
     Args:
@@ -311,7 +312,6 @@ def is_valid_toml(toml: Dict[str, Any]) -> bool:
 def _merge_dependency(
     main_dep_info,
     dep_info,
-    platform_name,
     dependency,
     addon_name
 ):
@@ -319,8 +319,8 @@ def _merge_dependency(
         return dep_info
 
     if isinstance(main_dep_info, dict):
-        if platform_name in main_dep_info:
-            main_dep_info = main_dep_info[platform_name]
+        if PLATFORM_NAME in main_dep_info:
+            main_dep_info = main_dep_info[PLATFORM_NAME]
 
     resolved_vers = _get_correct_version(main_dep_info, dep_info)
     if not isinstance(resolved_vers, ConstraintClasses):
@@ -340,10 +340,10 @@ def _merge_dependency(
 
 
 def merge_tomls_dependencies(
-    main_toml: Dict[str, Dict[str, Any]],
-    addon_toml: Dict[str, Dict[str, Any]],
+    main_toml: dict[str, dict[str, Any]],
+    addon_toml: dict[str, dict[str, Any]],
     addon_name: str,
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """Add dependencies from 'addon_toml' to 'main_toml'.
 
     Looks for mininimal compatible version from both tomls.
@@ -390,11 +390,10 @@ def merge_tomls_dependencies(
 
 
 def merge_tomls_runtime(
-    main_toml: Dict[str, Dict[str, Any]],
-    addon_toml: Dict[str, Dict[str, Any]],
+    main_toml: dict[str, dict[str, Any]],
+    addon_toml: dict[str, dict[str, Any]],
     addon_name: str,
-    platform_name: str,
-) -> Dict[str, Dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     """Add dependencies from 'addon_toml' to 'main_toml'.
 
     Looks for mininimal compatible version from both tomls.
@@ -422,8 +421,8 @@ def merge_tomls_runtime(
     main_runtime = main_toml["ayon"]["runtimeDependencies"]
     for dependency, dep_info in addon_poetry.items():
         if isinstance(dep_info, dict):
-            if platform_name in dep_info:
-                dep_info = dep_info[platform_name]
+            if PLATFORM_NAME in dep_info:
+                dep_info = dep_info[PLATFORM_NAME]
 
             if "version" in dep_info:
                 dep_info = dep_info["version"]
@@ -432,7 +431,6 @@ def merge_tomls_runtime(
             main_dependencies[dependency] = _merge_dependency(
                 main_dependencies[dependency],
                 dep_info,
-                platform_name,
                 dependency,
                 addon_name
             )
@@ -441,7 +439,6 @@ def merge_tomls_runtime(
         main_runtime[dependency] = _merge_dependency(
             main_runtime.get(dependency),
             dep_info,
-            platform_name,
             dependency,
             addon_name
         )
@@ -450,9 +447,9 @@ def merge_tomls_runtime(
 
 
 def _get_correct_version(
-    main_version: Union[str, Dict[str, Any], ConstraintClassesHint],
-    dep_version: Union[str, Dict[str, Any]]
-) -> Union[ConstraintClassesHint, Dict[str, Any]]:
+    main_version: Union[str, dict[str, Any], ConstraintClassesHint],
+    dep_version: Union[str, dict[str, Any]]
+) -> Union[ConstraintClassesHint, dict[str, Any]]:
     """Return resolved version from two version (constraint).
 
     Warning:
@@ -513,7 +510,7 @@ def _version_parse(version_value):
     return version.parse(version_value)
 
 
-def get_full_toml(base_toml_data, addon_tomls, platform_name):
+def get_full_toml(base_toml_data, addon_tomls):
     """Loops through list of local addon folder paths to create full .toml
 
     Full toml is used to calculate set of python dependencies for all enabled
@@ -523,14 +520,14 @@ def get_full_toml(base_toml_data, addon_tomls, platform_name):
         base_toml_data (dict[str, Any]): Content of pyproject.toml from
             ayon-launcher installer.
         addon_tomls (dict[str, Any]): Content of addon pyproject.toml
-        platform_name (str): Platform name.
 
     Returns:
         (dict) updated base .toml
     """
 
     # Fix git sources of installer dependencies
-    main_dependencies = base_toml_data["tool"]["poetry"]["dependencies"]
+    toml_data = copy.deepcopy(base_toml_data)
+    main_dependencies = toml_data["tool"]["poetry"]["dependencies"]
     modified_dependencies = {}
     for key, value in main_dependencies.items():
         if not isinstance(value, str):
@@ -563,19 +560,19 @@ def get_full_toml(base_toml_data, addon_tomls, platform_name):
     for addon_name, addon_toml_data in addon_tomls.items():
         print(f"Merging in {addon_name} dependencies")
         
-        base_toml_data = merge_tomls_dependencies(
-            base_toml_data, addon_toml_data, addon_name
+        toml_data = merge_tomls_dependencies(
+            toml_data, addon_toml_data, addon_name
         )
 
     for addon_name, addon_toml_data in addon_tomls.items():
         print(f"Merging in {addon_name} runtime dependencies")
 
-        base_toml_data = merge_tomls_runtime(
-            base_toml_data, addon_toml_data, addon_name, platform_name
+        toml_data = merge_tomls_runtime(
+            toml_data, addon_toml_data, addon_name
         )
 
     # Convert all 'ConstraintClassesHint' to 'str'
-    main_dependencies = base_toml_data["tool"]["poetry"]["dependencies"]
+    main_dependencies = toml_data["tool"]["poetry"]["dependencies"]
     modified_dependencies = {}
     for key, value in main_dependencies.items():
         if not isinstance(value, (str, dict)):
@@ -586,7 +583,7 @@ def get_full_toml(base_toml_data, addon_tomls, platform_name):
     for key, value in sorted(main_dependencies.items()):
         print(f"  - {key} ({value})")
 
-    return base_toml_data
+    return toml_data
 
 
 class VenvInfo:
@@ -600,12 +597,12 @@ class VenvInfo:
         self.python_version = python_version
 
 
-def prepare_new_venv(output_root, installer):
+def prepare_new_venv(output_root, python_version):
     """Let Poetry create new venv in 'venv_folder' from 'full_toml_data'.
 
     Args:
         output_root (str): Path where venv should be created.
-        installer (dict[str, Any]): Installer metadata.
+        python_version (str): Python version to use.
 
     Raises:
         RuntimeError: Exception is raised if process finished with nonzero
@@ -613,8 +610,6 @@ def prepare_new_venv(output_root, installer):
     """
 
     print(f"Preparing new venv in {output_root}")
-
-    python_version = installer["pythonVersion"]
 
     python_args = get_python_arguments(output_root, python_version)
 
@@ -708,7 +703,7 @@ def install_poetry(
         venv_info.poetry_bin,
         venv_info.poetry_env
     )
-    if platform.system().lower() == "windows":
+    if PLATFORM_NAME == "windows":
         runtime_site_packages = os.path.join(
             runtime_root, "Lib", "site-packages"
         )
@@ -945,7 +940,7 @@ def prepare_zip_venv(venv_path, runtime_site_packages, output_root):
         (str) path to zipped venv
     """
     basename = create_dependency_package_basename()
-    if platform.system().lower() == "linux":
+    if PLATFORM_NAME == "linux":
         basename += f"-{distro.id()}{distro.major_version()}"
     zip_file_name = f"{basename}.zip"
     venv_zip_path = os.path.join(output_root, zip_file_name)
@@ -956,8 +951,8 @@ def prepare_zip_venv(venv_path, runtime_site_packages, output_root):
 
 
 def get_applicable_package(
-    con: ayon_api.ServerAPI, new_toml: Dict[str, Any]
-) -> Union[Dict[str, Any], None]:
+    con: ayon_api.ServerAPI, new_toml: dict[str, Any]
+) -> Union[dict[str, Any], None]:
     """Compares existing dependency packages to find matching.
 
     One dep package could contain same versions of python dependencies for
@@ -983,7 +978,7 @@ def get_applicable_package(
             return package
 
 
-def get_python_modules(venv_path: str) -> Dict[str, str]:
+def get_python_modules(venv_path: str) -> dict[str, str]:
     """Uses pip freeze to get installed libraries from `venv_path`.
 
     Args:
@@ -1044,10 +1039,10 @@ def calculate_hash(filepath):
 
 def prepare_package_data(
     venv_zip_path: str,
-    bundle: Bundle,
-    platform_name: str,
-    runtime_dependencies: Dict[str, str],
-):
+    addons: dict[str, str],
+    installer_version: str,
+    runtime_dependencies: dict[str, str],
+) -> dict[str, Any]:
     """Creates package data for server.
 
     All data in output are used to call 'create_dependency_package'.
@@ -1055,7 +1050,6 @@ def prepare_package_data(
     Args:
         venv_zip_path (str): Local path to zipped venv.
         bundle (Bundle): Bundle object with all data.
-        platform_name (str): Platform name.
         runtime_dependencies (dict[str, str]): Runtime dependencies with
             requested versions.
 
@@ -1074,16 +1068,21 @@ def prepare_package_data(
     return {
         "filename": package_name,
         "python_modules": python_modules,
-        "source_addons": bundle.addons,
-        "installer_version": bundle.installer_version,
+        "source_addons": copy.deepcopy(addons),
+        "installer_version": installer_version,
         "checksum": checksum,
         "checksum_algorithm": "sha256",
         "file_size": os.stat(venv_zip_path).st_size,
-        "platform_name": platform_name,
+        "platform_name": PLATFORM_NAME,
     }
 
 
-def stored_package_to_dir(output_dir, venv_zip_path, bundle, package_data):
+def stored_package_to_dir(
+    output_dir: str,
+    venv_zip_path: str,
+    package_data: dict[str, Any],
+    bundle_name: Optional[str] = None,
+):
     """Store dependency package to output directory.
 
     A json file with dependency package information is created and stored
@@ -1094,8 +1093,8 @@ def stored_package_to_dir(output_dir, venv_zip_path, bundle, package_data):
     Args:
         output_dir (str): Path where dependency package will be stored.
         venv_zip_path (str): Local path to zipped venv.
-        bundle (Bundle): Bundle object with all data.
         package_data (dict[str, Any]): Dependency package information.
+        bundle_name (Optional[str]): Bundle name.
     """
 
     if not os.path.exists(output_dir):
@@ -1106,7 +1105,8 @@ def stored_package_to_dir(output_dir, venv_zip_path, bundle, package_data):
     new_package_data["platform"] = new_package_data.pop("platform_name")
     new_package_data["size"] = new_package_data.pop("file_size")
     # Add bundle name as information
-    new_package_data["bundle_name"] = bundle.name
+    if bundle_name:
+        new_package_data["bundle_name"] = bundle_name
 
     filename = new_package_data["filename"]
     output_path = os.path.join(output_dir, filename)
@@ -1176,7 +1176,7 @@ def is_file_deletable(filepath):
 
 def get_runtime_dependencies(
     runtime_site_packages: str, addons_venv_path: str
-) -> Dict[str, str]:
+) -> dict[str, str]:
     python_executable = get_venv_executable(addons_venv_path, "python")
     script_path = os.path.join(PACKAGE_ROOT, "_runtime_deps.py")
 
@@ -1240,9 +1240,13 @@ def _remove_tmpdir(tmpdir):
     return failed
 
 
-def _create_package(
-    bundle_name, con, skip_upload, output_root, destination_root=None
-):
+def _create_bundle_package(
+    bundle_name: str,
+    con: ayon_api.ServerAPI,
+    skip_upload: bool,
+    output_root: str,
+    destination_root: Optional[str] = None,
+) -> Optional[str]:
     bundles_by_name = get_bundles(con)
 
     bundle = bundles_by_name.get(bundle_name)
@@ -1256,16 +1260,19 @@ def _create_package(
         print(f"Bundle '{bundle.name}' does not have set installer.")
         return None
 
-    platform_name = platform.system().lower()
     installer = find_installer_by_name(
-        con, bundle_name, bundle.installer_version, platform_name
-    )
-    installer_toml_data = get_installer_toml(installer)
-    full_toml_data = get_full_toml(
-        installer_toml_data, bundle_addons_toml, platform_name
+        con, bundle_name, bundle.installer_version
     )
 
-    venv_info = prepare_new_venv(output_root, installer)
+    installer_toml_data = get_installer_toml(installer)
+
+    full_toml_data = get_full_toml(
+        installer_toml_data,
+        bundle_addons_toml,
+    )
+    venv_info: VenvInfo = prepare_new_venv(
+        output_root, installer["pythonVersion"]
+    )
 
     solve_dependencies(full_toml_data, output_root, venv_info.venv_path)
 
@@ -1274,11 +1281,64 @@ def _create_package(
         update_bundle_with_package(con, bundle, applicable_package)
         return applicable_package["filename"]
 
+    package_data, venv_zip_path = _create_package(
+        installer,
+        bundle.addons,
+        bundle_addons_toml,
+        output_root,
+        venv_info=venv_info,
+        full_toml_data=full_toml_data,
+    )
+
+    if destination_root:
+        stored_package_to_dir(
+            destination_root,
+            venv_zip_path,
+            package_data,
+            bundle_name=bundle.name,
+        )
+
+    if not skip_upload:
+        upload_to_server(con, venv_zip_path, package_data)
+        update_bundle_with_package(con, bundle, package_data)
+
+    return package_data["filename"]
+
+
+def _create_package(
+    installer: dict[str, Any],
+    addons: dict[str, str],
+    bundle_addons_toml: dict[str, Any],
+    output_root: str,
+    *,
+    venv_info: Optional[VenvInfo] = None,
+    full_toml_data: Optional[dict[str, Any]] = None,
+):
+    if venv_info is None:
+        venv_info = prepare_new_venv(
+            output_root,
+            installer["pythonVersion"],
+        )
+
+    if full_toml_data is None:
+        installer_toml_data = get_installer_toml(installer)
+        full_toml_data = get_full_toml(
+            installer_toml_data,
+            bundle_addons_toml,
+        )
+        solve_dependencies(
+            full_toml_data,
+            output_root,
+            venv_info.venv_path,
+        )
+
     (
         runtime_site_packages,
         installed_installer_runtime_deps
     ) = install_poetry(
-        full_toml_data, installer, venv_info
+        full_toml_data,
+        installer,
+        venv_info,
     )
 
     # remove already distributed libraries from addons specific venv
@@ -1298,21 +1358,21 @@ def _create_package(
     )
 
     package_data = prepare_package_data(
-        venv_zip_path, bundle, platform_name, runtime_dependencies
+        venv_zip_path,
+        addons,
+        installer["version"],
+        runtime_dependencies,
     )
-    if destination_root:
-        stored_package_to_dir(
-            destination_root, venv_zip_path, bundle, package_data
-        )
 
-    if not skip_upload:
-        upload_to_server(con, venv_zip_path, package_data)
-        update_bundle_with_package(con, bundle, package_data)
-
-    return package_data["filename"]
+    return package_data, venv_zip_path
 
 
-def create_package(bundle_name, con=None, output_dir=None, skip_upload=False):
+def create_bundle_package(
+    bundle_name: str,
+    con: Optional[ayon_api.ServerAPI] = None,
+    output_dir: Optional[str] = None,
+    skip_upload: bool = False,
+) -> Optional[str]:
     """Pulls all active addons info from server and create dependency package.
 
     1. Takes base (installer) pyproject.toml, and adds tomls from addons
@@ -1326,25 +1386,63 @@ def create_package(bundle_name, con=None, output_dir=None, skip_upload=False):
         con (Optional[ayon_api.ServerAPI]): Prepared server API object.
         output_dir (Optional[str]): Path to directory where package will be
             created.
-        skip_upload (Optional[bool]): Skip upload to server. Default: False.
-    """
+        skip_upload (bool): Skip upload to server. Default: False.
+    
+    Returns:
+        Optional[str]: Package path.
 
+    """
     # create resolved venv based on distributed venv with Desktop + activated
     # addons
     tmpdir = os.path.realpath(tempfile.mkdtemp(prefix="ayon_dep-package"))
-    print(">>> Creating processing directory {} for {}".format(
-        tmpdir, bundle_name))
+    print(
+        f">>> Creating processing directory {tmpdir} for {bundle_name}"
+    )
 
     try:
         if con is None:
             con = ayon_api.get_server_api_connection()
-        return _create_package(
+        return _create_bundle_package(
             bundle_name, con, skip_upload, tmpdir, output_dir
         )
 
     finally:
-        print(">>> Cleaning up processing directory {}".format(tmpdir))
+        print(f">>> Cleaning up processing directory {tmpdir}")
         failed_paths = _remove_tmpdir(tmpdir)
         if failed_paths:
-            print("Failed to cleanup tempdir: {}".format(tmpdir))
+            print(f"Failed to cleanup tempdir: {tmpdir}")
+            print("\n".join(sorted(failed_paths)))
+
+
+def create_package(
+    installer: dict[str, Any],
+    addons: dict[str, str],
+    bundle_addons_toml: dict[str, Any],
+    output_dir: str,
+) -> None:
+    """Create dependency package using only data.
+    
+    Args:
+        installer (dict[str, Any]): Installer data.
+        addons (dict[str, str]): Addons data.
+        bundle_addons_toml (dict[str, Any]): Bundle addons toml data.
+        output_dir (str): Path where zip with a metadata file will be stored.
+
+    """
+    tmpdir = os.path.realpath(tempfile.mkdtemp(prefix="ayon_dep-package"))
+    try:
+        package_data, venv_zip_path = _create_package(
+            installer, addons, bundle_addons_toml, tmpdir
+        )
+        stored_package_to_dir(
+            output_dir,
+            venv_zip_path,
+            package_data,
+        )
+
+    finally:
+        print(f">>> Cleaning up processing directory {tmpdir}")
+        failed_paths = _remove_tmpdir(tmpdir)
+        if failed_paths:
+            print(f"Failed to cleanup tempdir: {tmpdir}")
             print("\n".join(sorted(failed_paths)))
