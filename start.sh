@@ -230,7 +230,7 @@ create_package_with_docker() {
   set_env
   bundle_name=$1
   variant=$2
-  if [ -z "$bundle_name" || -z "$variant"]; then
+  if [[ -z "$bundle_name" || -z "$variant" ]]; then
     echo -e "${BIRed}!!!${RST} Please use 'docker-create' command with [bundle name] [variant] arguments."
     return 1
   fi
@@ -242,9 +242,9 @@ create_package_with_docker() {
   echo -e "${BIGreen}>>>${RST} Using Dockerfile for ${BIWhite}$variant${RST} ..."
 
   echo -e "${BIGreen}>>>${RST} Running docker build ..."
-  container_name=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+  container_name=$(date -u +'%Y-%m-%dT%H-%M-%SZ')
   docker run --name $container_name -it --entrypoint "/bin/bash" $image_name -l -c "/opt/ayon-dependencies-tool/start.sh create -b $bundle_name"
-  docker container rm $containerName
+  docker container rm $container_name
 
   if [ $? -ne 0 ] ; then
     echo $?
