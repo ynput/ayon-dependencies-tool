@@ -4,8 +4,6 @@ Execute this script using venv python executable to get runtime python modules.
 The script is using 'pkg_resources' to get runtime modules and their versions.
 Output is stored to a json file that must be provided by last argument.
 """
-
-
 import contextlib
 import sys
 import json
@@ -39,20 +37,23 @@ def get_runtime_modules(runtime_root: str) -> dict[str, str]:
     try:
         from importlib.metadata import distributions
     except ImportError:
-        from importlib_metadata import distributions  # backport for older Pythons
+        # backport for older Pythons
+        from importlib_metadata import distributions
 
     runtime_root = Path(runtime_root)
     output = {}
 
     for dist in distributions(path=[str(runtime_root)]):
-        # Try to get the canonical package name from metadata, fall back to dist.name
+        # Try to get the canonical package name from metadata,
+        # fall back to dist.name
         name = None
         with contextlib.suppress(Exception):
             name = dist.metadata["Name"]
         if not name:
             name = getattr(dist, "name", None)
 
-        # As a last resort, infer a top-level name from the distribution files
+        # As a last resort, infer a top-level name
+        # from the distribution files
         if not name:
             files = list(dist.files or [])
             name = files[0].parts[0] if files else None
