@@ -940,6 +940,8 @@ def remove_existing_from_venv(
         # TODO fix in ayon-launcher
         if package_name == "Babel":
             package_name = "babel"
+        if package_name.lower() == "pip":
+            continue
         print(f"- {package_name}")
         run_subprocess(
             [pip_executable, "uninstall", package_name, "--yes"],
