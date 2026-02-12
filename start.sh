@@ -34,7 +34,7 @@ BIWhite='\033[1;97m'      # White
 
 args=$@
 
-poetry_version="2.0.1"
+poetry_version="2.2.1"
 poetry_verbosity=""
 while :; do
   case $1 in

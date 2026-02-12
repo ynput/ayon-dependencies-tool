@@ -9,31 +9,31 @@ import sys
 import json
 from pathlib import Path
 
+if sys.version_info >= (3, 10):
+    from importlib.metadata import distributions
+else:
+    from importlib_metadata import distributions
+
 
 def get_runtime_modules(runtime_root):
     sys.path.insert(0, runtime_root)
-    # Import 'pkg_resources' after adding runtime root to 'sys.path'
-    import pkg_resources
 
     runtime_root = Path(runtime_root)
 
-    # One of the dependencies from runtime dependencies must be imported
-    #   so 'pkg_resources' have them available in 'working_set'
-    # This approach makes sure that we use right version that are really
-    #   installed in runtime dependencies directory. Keep in mind that some
-    #   dependencies have other modules as requirements that may not be
-    #   listed in pyproject.toml and there might not be explicit version.
-    #   Also using version from modules require to import them and be lucky
-    #   that version is available and that installed module have same name
-    #   as pip package (e.g. 'PIL' vs. 'Pillow').
-    # TODO find a better way how to define one dependency to import
-    # Randomly chosen module inside runtime dependencies
+    runtime_dep_root = runtime_root / "vendor" / "python"
 
     output = {}
-    for package in pkg_resources.working_set:
-        package_path = Path(package.module_path)
-        if package_path.is_relative_to(runtime_root):
-            output[package.project_name] = package.version
+    for dist in distributions():
+        try:
+            # Get the location of the distribution
+            if dist.locate_file(''):
+                dist_path = Path(dist.locate_file(''))
+                if dist_path.is_relative_to(runtime_dep_root):
+                    output[dist.name] = dist.version
+        except (AttributeError, TypeError):
+            # Handle cases where locate_file might not work
+            continue
+    
     return output
 
 

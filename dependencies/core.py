@@ -1240,6 +1240,32 @@ def is_file_deletable(filepath):
 def get_runtime_dependencies(
     runtime_site_packages: str, addons_venv_path: str
 ) -> dict[str, str]:
+    
+    python_executable = get_venv_executable(addons_venv_path, "python")
+
+    # find out python version of created venv to add 'importlib_metadata' for python < 3.10
+    process = subprocess.Popen(
+        [python_executable, "--version"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    _stdout, _stderr = process.communicate()
+    if process.returncode != 0:
+        raise RuntimeError(f"Failed to get python version from venv.")
+    version_output = _stdout.decode("utf-8").strip()
+    if not version_output.startswith("Python "):
+        raise RuntimeError(f"Unexpected output from python version: {version_output}")
+    python_version = version_output.split(" ")[1]
+    
+    #add importlib_metadata to runtime dependencies if python version is lower than 3.10
+    print(f">>> Python version: {python_version}")
+    if tuple(map(int, python_version.split("."))) < (3, 10, 0):
+        print("Adding 'importlib_metadata' to runtime dependencies for Python < 3.10")
+        return_code = run_subprocess(
+            [python_executable, "-m", "pip", "install", "importlib_metadata"]
+        )
+        print(f">>> Return code for adding 'importlib_metadata': {return_code}")
+
     python_executable = get_venv_executable(addons_venv_path, "python")
     script_path = os.path.join(PACKAGE_ROOT, "_runtime_deps.py")
 
