@@ -39,12 +39,6 @@ def get_runtime_modules(runtime_root: str) -> dict[str, str]:
     """
     sys.path.insert(0, runtime_root)
 
-    try:
-        from importlib.metadata import distributions
-    except ImportError:
-        # backport for older Pythons
-        from importlib_metadata import distributions
-
     runtime_root = Path(runtime_root)
     output = {}
 
