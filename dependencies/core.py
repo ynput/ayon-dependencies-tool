@@ -832,8 +832,9 @@ def _install_runtime_dependencies(
         poetry_bin, "run",
         "python", "-m", "pip", "install",
         "--upgrade",
+        "--timeout", "300",
         "-r", requiements_path,
-        "--prefix", str(runtime_root)
+        "--prefix", str(runtime_root),
     ]
 
     run_subprocess(
