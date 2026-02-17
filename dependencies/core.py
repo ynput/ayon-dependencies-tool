@@ -1244,10 +1244,11 @@ def get_runtime_dependencies(
     python_executable = get_venv_executable(addons_venv_path, "python")
 
     # find out python version of created venv to add 'importlib_metadata' for python < 3.10
-    version_output = subprocess.check_output([python_executable, "--version"])
-    if not version_output.startswith("Python "):
-        raise RuntimeError(f"Unexpected output from python version: {version_output}")
-    python_version = version_output.split(" ")[1]
+    python_version = subprocess.check_output([
+        python_executable,
+        "-c",
+        "import platform;print(platform.python_version())"
+    ]).decode("utf-8").strip()
     
     #add importlib_metadata to runtime dependencies if python version is lower than 3.10
     print(f">>> Python version: {python_version}")
