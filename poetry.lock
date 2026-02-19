@@ -46,21 +46,19 @@ tests-no-zope = ["attrs[tests-mypy]", "cloudpickle", "hypothesis", "pympler", "p
 
 [[package]]
 name = "ayon-python-api"
-version = "1.0.0"
+version = "1.2.11"
 description = "AYON Python API"
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "ayon-python-api-1.0.0.tar.gz", hash = "sha256:f24895a7a649e6ab049e1f76d7374aa9be898df5a71b4e44e70a198e328a818b"},
-    {file = "ayon_python_api-1.0.0-py3-none-any.whl", hash = "sha256:6227e4a76942aa0bde5254c7925da9567edd80996dc4e3e92aceb87979a9cad2"},
+    {file = "ayon_python_api-1.2.11-py3-none-any.whl", hash = "sha256:f66bad615bd32fc21ee618e212fca3ff42b50476c9f15b2768a54eafe4a8db7d"},
+    {file = "ayon_python_api-1.2.11.tar.gz", hash = "sha256:7a53a9affc34202c677e89726079f0c98cb1bfa26de77b7c71eb8d7dd5d46afb"},
 ]
 
 [package.dependencies]
-appdirs = ">=1,<2"
 requests = ">=2.27.1"
-six = ">=1.15"
-Unidecode = ">=1.2.0"
+Unidecode = ">=1.3.0"
 
 [[package]]
 name = "build"
@@ -1622,4 +1620,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9,<4.0"
-content-hash = "3184623a77fb9d69195168048fae54c84ecd36f10e2747b60f02fea5e54fb5bd"
+content-hash = "17dec17c87c4d91b3771d26f71c3f1729d0bfd3af335b28b716054a91d534f81"
