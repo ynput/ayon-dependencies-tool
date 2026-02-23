@@ -684,6 +684,7 @@ def prepare_new_venv(output_root, python_version):
     env = dict(os.environ.items())
     env["POETRY_VERSION"] = POETRY_VERSION
     env["POETRY_HOME"] = poetry_home
+    env["POETRY_REQUESTS_TIMEOUT"] = "300"
     # Create poetry in output root
     subprocess.call(python_args + [poetry_script], env=env, cwd=output_root)
 
