@@ -14,7 +14,7 @@ from typing import Union, Any, Optional
 from packaging import version
 from dataclasses import dataclass
 
-import toml
+import tomlkit as toml
 import requests
 from poetry.core.constraints.version import (
     parse_constraint,
