@@ -12,7 +12,7 @@ $repo_root_rel = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 $repo_root = (Get-Item $repo_root_rel).FullName
 $poetry_home_root="$repo_root\.poetry"
 
-$POETRY_VERSION="2.0.1"
+$POETRY_VERSION="2.3.0"
 $TOOL_VERSION = Invoke-Expression -Command "python -c ""import os;import sys;content={};f=open(r'$($current_dir)/version.py');exec(f.read(),content);f.close();print(content['__version__'])"""
 
 
