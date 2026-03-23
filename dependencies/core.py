@@ -65,72 +65,6 @@ class Bundle:
     installer_version: Union[str, None]
 
 
-def get_pyenv_arguments(
-    output_root: str, python_version: str
-) -> Union[list[str], None]:
-    """Use pyenv to install python version and use for venv creation.
-
-    Usage of pyenv is ideal as it allows to properly install runtime
-        dependencies.
-
-    Args:
-        output_root (str): Path to processing root.
-        python_version (str): Python version to install.
-
-    Returns:
-        Union[list[str], None]: List of arguments for subprocess or None.
-    """
-
-    pyenv_path = shutil.which("pyenv")
-    if not pyenv_path:
-        return
-    print(f"Installing Python {python_version} with pyenv")
-    install_args = [pyenv_path, "install", python_version, "--skip-existing"]
-    if PLATFORM_NAME == "windows":
-        install_args.append("--quiet")
-    result = subprocess.run(install_args)
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to install python {python_version}")
-    subprocess.run(
-        [pyenv_path, "local", python_version],
-        cwd=output_root
-    )
-    output = subprocess.check_output(
-        [pyenv_path, "which", "python"],
-        cwd=output_root
-    )
-    python_path = output.decode().strip()
-    return [python_path]
-
-
-def get_python_arguments(output_root: str, python_version: str) -> list[str]:
-    """Get arguments to run python.
-
-    By default, is trying to use 'pyenv' to install python version and use
-        it for venv creation. If 'pyenv' is not available, it will use
-        system python.
-
-    Args:
-        output_root (str): Path to processing root.
-        python_version (str): Python version to install.
-
-    Returns:
-        list[str]: List of arguments for subprocess.
-    """
-
-    args = get_pyenv_arguments(output_root, python_version)
-    if args is not None:
-        return args
-    print(
-        "Failed to use pyenv. Using system python, this may cause that"
-        " package will be incompatible package with installer."
-    )
-    python_path = shutil.which("python3")
-    if not python_path:
-        python_path = shutil.which("python")
-    return [python_path]
-
-
 def get_bundles(con: ayon_api.ServerAPI) -> dict[str, Bundle]:
     """Provides dictionary with available bundles
 
@@ -673,18 +607,16 @@ def prepare_new_venv(output_root, python_version):
     print(f"Preparing new venv in {output_root}")
 
     uv_bin = _find_uv()
+
     venv_path = os.path.join(output_root, ".venv")
 
-    # Prefer pyenv-provided Python for exact version matching.
-    python_args = get_pyenv_arguments(output_root, python_version)
-    if python_args is not None:
-        python_spec = python_args[0]
-    else:
-        # Fall back to uv-managed Python — uv will download the requested
-        # version automatically if it is not already installed.
-        python_spec = python_version
-        print(
-            f"pyenv not available; using uv-managed Python {python_version}."
+    return_code = run_subprocess(
+        [uv_bin, "python", "pin", python_version],
+        cwd=output_root,
+    )
+    if return_code != 0:
+        raise RuntimeError(
+            f"Failed to create virtual environment at {venv_path}"
         )
 
     return_code = run_subprocess(
