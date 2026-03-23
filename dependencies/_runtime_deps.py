@@ -9,9 +9,9 @@ import sys
 import json
 from pathlib import Path
 
-if sys.version_info >= (3, 10):
+try:
     from importlib.metadata import distributions
-else:
+except ImportError:
     from importlib_metadata import distributions
 
 
