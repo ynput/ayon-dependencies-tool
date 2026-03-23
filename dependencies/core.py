@@ -1214,7 +1214,7 @@ def update_bundle_with_package(con, bundle, package_data):
     platform_name = package_data["platform_name"]
     dependency_packages = copy.deepcopy(bundle.dependency_packages)
     dependency_packages[platform_name] = package_name
-    con.update_bundle(bundle.name, dependency_packages)
+    con.update_bundle(bundle.name, dependency_packages=dependency_packages)
 
 
 def is_file_deletable(filepath):
