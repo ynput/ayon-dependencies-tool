@@ -5,7 +5,7 @@ import collections
 from typing import Any
 from pathlib import Path
 
-import toml
+import tomlkit as toml
 from cleo.io.null_io import IO, NullIO
 from cleo.io.outputs.stream_output import StreamOutput
 from cleo.io.inputs.argv_input import ArgvInput
