@@ -9,19 +9,18 @@ import zipfile
 PACKAGE_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
-def get_venv_executable(venv_root, executable="python"):
+def get_venv_executable(uv_bin, venv_root):
     """Get path to executable in virtual environment.
 
     Args:
         venv_root (str): Path to venv root.
-        executable (Optional[str]): Name of executable. Defaults to "python".
     """
 
-    if platform.system().lower() == "windows":
-        bin_folder = "Scripts"
-    else:
-        bin_folder = "bin"
-    return os.path.join(venv_root, bin_folder, executable)
+    return subprocess.check_output(
+        [uv_bin, "run", "python", "-c" "import sys;print(sys.executable)"],
+        text=True,
+        cwd=venv_root,
+    ).strip()
 
 
 def get_venv_site_packages(venv_root):

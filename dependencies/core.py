@@ -15,7 +15,6 @@ from packaging import version
 from dataclasses import dataclass
 
 import tomlkit as toml
-import requests
 from .version_utils import (
     parse_constraint,
     EmptyConstraint,
@@ -37,7 +36,6 @@ else:
 from .utils import (
     run_subprocess,
     ZipFileLongPaths,
-    get_venv_executable,
     get_venv_site_packages,
     PACKAGE_ROOT,
 )
@@ -620,7 +618,7 @@ def prepare_new_venv(output_root, python_version):
         )
 
     return_code = run_subprocess(
-        [uv_bin, "venv", venv_path, "--python", python_spec],
+        [uv_bin, "venv", venv_path],
         cwd=output_root,
     )
     if return_code != 0:
@@ -690,7 +688,6 @@ def install_dependencies(
     return_code = run_subprocess(
         [
             uv_bin, "pip", "install",
-            "--python", venv_info.venv_python,
             "-r", requirements_path,
         ],
         cwd=venv_info.root,
@@ -704,7 +701,6 @@ def install_dependencies(
         runtime_dependencies,
         runtime_root,
         uv_bin,
-        venv_info.venv_python,
     )
     if PLATFORM_NAME == "windows":
         runtime_site_packages = os.path.join(
@@ -736,7 +732,7 @@ def _dep_value_to_requirement(name: str, value) -> Optional[str]:
 
 
 def _install_runtime_dependencies(
-    runtime_dependencies, runtime_root, uv_bin, venv_python
+    runtime_dependencies, runtime_root, uv_bin
 ):
     """Install runtime dependencies to a custom prefix directory.
 
@@ -745,7 +741,6 @@ def _install_runtime_dependencies(
             resolved exact versions.
         runtime_root (str): Path where runtime dependencies should be installed.
         uv_bin (str): Path to the uv executable.
-        venv_python (str): Path to the venv's Python interpreter.
     """
     requirements_lines = []
     for package_name, package_version in runtime_dependencies.items():
@@ -776,7 +771,6 @@ def _install_runtime_dependencies(
     run_subprocess(
         [
             uv_bin, "pip", "install",
-            "--python", venv_python,
             "--upgrade",
             "-r", requirements_path,
             "--prefix", str(runtime_root),
@@ -854,15 +848,14 @@ def lock_to_toml_data(lock_path):
 
 
 def remove_existing_from_venv(
-    addons_venv_path,
+    venv_info,
     installer,
     installed_installer_runtime_deps
 ):
     """Loop through calculated addon venv and remove already installed libs.
 
     Args:
-        addons_venv_path (str): Path to newly created merged venv for active
-            addons.
+        venv_info: Venv metadata returned by prepare_new_venv.
         installer (dict[str, Any]): installer data from server.
         installed_installer_runtime_deps (set[str]): Installed runtime
             dependencies.
@@ -873,7 +866,6 @@ def remove_existing_from_venv(
     """
 
     uv_bin = _find_uv()
-    venv_python = get_venv_executable(addons_venv_path, "python")
 
     packages = sorted(
         # Fix 'Babel' -> 'babel'  # TODO fix in ayon-launcher
@@ -890,8 +882,9 @@ def remove_existing_from_venv(
         print(f"- {package_name}")
 
     run_subprocess(
-        [uv_bin, "pip", "uninstall", "--python", venv_python] + packages,
-        bound_output=False
+        [uv_bin, "pip", "uninstall"] + packages,
+        bound_output=False,
+        cwd=venv_info.root,
     )
 
 
@@ -1001,13 +994,12 @@ def get_python_modules(venv_path: str) -> dict[str, str]:
     """
 
     uv_bin = _find_uv()
-    python_executable: str = get_venv_executable(venv_path, "python")
 
     process: subprocess.Popen = subprocess.Popen(
-        [uv_bin, "pip", "freeze", "--python", python_executable,
-         "--no-color"],
+        [uv_bin, "pip", "freeze", "--no-color"],
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
+        cwd=os.path.dirname(venv_path),
     )
     _stdout, _stderr = process.communicate()
     if process.returncode != 0:
@@ -1191,25 +1183,20 @@ def get_runtime_dependencies(
     runtime_site_packages: str, addons_venv_path: str
 ) -> dict[str, str]:
     
-    python_executable = get_venv_executable(addons_venv_path, "python")
     uv_bin = _find_uv()
 
     # find out python version of created venv to add 'importlib_metadata' for python < 3.10
-    python_version = subprocess.check_output([
-        python_executable,
-        "-c",
-        "import platform;print(platform.python_version())"
-    ]).decode("utf-8").strip()
+    python_version = subprocess.check_output(
+        [
+            uv_bin, "run", "python",
+            "-c", "import platform;print(platform.python_version())"
+        ],
+        text=True,
+        cwd=addons_venv_path,
+    ).strip()
     
     #add importlib_metadata to runtime dependencies if python version is lower than 3.10
     print(f">>> Python version: {python_version}")
-    if tuple(map(int, python_version.split("."))) < (3, 10, 0):
-        print("Adding 'importlib_metadata' to runtime dependencies for Python < 3.10")
-        return_code = run_subprocess(
-            [uv_bin, "pip", "install", "--python", python_executable,
-             "importlib_metadata"]
-        )
-        print(f">>> Return code for adding 'importlib_metadata': {return_code}")
 
     script_path = os.path.join(PACKAGE_ROOT, "_runtime_deps.py")
 
@@ -1225,7 +1212,10 @@ def get_runtime_dependencies(
         )
 
     try:
-        subprocess.run([python_executable, script_path, output_path])
+        subprocess.run(
+            ["uv", "run", "python", script_path, output_path],
+            cwd=addons_venv_path,
+        )
         with open(output_path) as stream:
             data = json.load(stream)
         return data["runtime_dependencies"]
@@ -1376,7 +1366,7 @@ def _create_package(
 
     # remove already distributed libraries from addons specific venv
     remove_existing_from_venv(
-        venv_info.venv_path,
+        venv_info,
         installer,
         installed_installer_runtime_deps
     )
