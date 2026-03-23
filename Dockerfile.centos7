@@ -68,33 +68,19 @@ RUN git clone -b 0.17.0 --single-branch https://github.com/NixOS/patchelf.git . 
 
 RUN mkdir /opt/ayon-dependencies-tool
 
-RUN curl https://pyenv.run | bash
-# ENV PYTHON_CONFIGURE_OPTS --enable-shared
-
-RUN echo 'export PATH="$HOME/.pyenv/bin:$PATH"'>> $HOME/.bashrc \
-    && echo 'eval "$(pyenv init -)"' >> $HOME/.bashrc \
-    && echo 'eval "$(pyenv virtualenv-init -)"' >> $HOME/.bashrc \
-    && echo 'eval "$(pyenv init --path)"' >> $HOME/.bashrc
-
 RUN source $HOME/.bashrc \
     && export CPPFLAGS="-I/usr/include/openssl11" \
     && export LDFLAGS="-L/usr/lib64/openssl11 -lssl -lcrypto" \
     && export PATH=/usr/local/openssl/bin:$PATH \
     && export LD_LIBRARY_PATH=/usr/local/openssl/lib:$LD_LIBRARY_PATH \
-    && pyenv install ${PYTHON_VERSION}
 
 COPY . /opt/ayon-dependencies-tool/
-RUN rm -rf /opt/ayon-dependencies-tool/.uv || true
 RUN chmod +x /opt/ayon-dependencies-tool/start.sh
 
 # USER ayon
 
 WORKDIR /opt/ayon-dependencies-tool
 
-RUN source $HOME/.bashrc \
-    && pyenv local ${PYTHON_VERSION}
-
-RUN source $HOME/.bashrc \
-    && ./start.sh install
+RUN source $HOME/.bashrc && ./start.sh install
 
 CMD [/opt/ayon-dependencies-tool/start.sh, listen]

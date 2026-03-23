@@ -46,39 +46,17 @@ RUN apt-get update \
 
 SHELL ["/bin/bash", "-c"]
 
-
 RUN mkdir /opt/ayon-dependencies-tool
-
-# download and install pyenv
-RUN curl https://pyenv.run | bash \
-    && echo 'export PATH="$HOME/.pyenv/bin:$PATH"'>> $HOME/init_pyenv.sh \
-    && echo 'eval "$(pyenv init -)"' >> $HOME/init_pyenv.sh \
-    && echo 'eval "$(pyenv virtualenv-init -)"' >> $HOME/init_pyenv.sh \
-    && echo 'eval "$(pyenv init --path)"' >> $HOME/init_pyenv.sh
-
-ENV PYENV_ROOT="/root/.pyenv"
-ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:$PATH"
-
-# install python with pyenv
-RUN source $HOME/init_pyenv.sh \
-    && pyenv install ${PYTHON_VERSION} \
-    && pyenv global ${PYTHON_VERSION} \
-    && pyenv rehash
-
-RUN source /root/.bashrc && python --version
-
 COPY . /opt/ayon-dependencies-tool/
-
 RUN chmod +x /opt/ayon-dependencies-tool/start.sh
 
-WORKDIR /opt/ayon-dependencies-tool
-
-# set local python version
-RUN source $HOME/init_pyenv.sh \
-    && pyenv local ${PYTHON_VERSION}
+# Download and install uv
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+ENV PATH="/root/.local/bin/:$PATH"
 
 # build launcher and installer
-RUN source $HOME/.bashrc \
-    && ./start.sh install
+WORKDIR /opt/ayon-dependencies-tool
+RUN source $HOME/.bashrc && ./start.sh install
 
 CMD [/opt/ayon-dependencies-tool/start.sh, listen]
