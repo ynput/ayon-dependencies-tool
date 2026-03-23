@@ -59,10 +59,10 @@ def solve_dependencies(
         all_deps.setdefault(k, v)
 
     print("Resolving all dependencies with uv ...")
-    all_resolved = _uv_compile(all_deps, python_constraint, output_root)
+    all_resolved = _uv_compile(all_deps, python_constraint)
 
     print("Resolving main dependency transitive closure with uv ...")
-    main_resolved_names = set(_uv_compile(main_deps, python_constraint, output_root))
+    main_resolved_names = set(_uv_compile(main_deps, python_constraint))
 
     # runtime-only = packages resolved that are NOT in the main transitive closure
     new_runtime: dict[str, str] = {}
@@ -88,7 +88,6 @@ class _Package:
 def _uv_compile(
     deps: dict[str, Any],
     python_constraint: str,
-    output_root: str,
 ) -> dict[str, str]:
     """Run `uv pip compile` and return a dict of {normalised_name: version}.
 
@@ -96,7 +95,6 @@ def _uv_compile(
         deps: Mapping of package name → constraint/version (Poetry or PEP 508
               format, or a dict for git/url deps).
         python_constraint: Python version constraint string (e.g. ">=3.9").
-        output_root: Directory for temp input/output files.
 
     Returns:
         Dict mapping lower-cased canonical package name to exact version string.
