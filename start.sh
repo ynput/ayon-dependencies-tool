@@ -94,8 +94,6 @@ clean_pyc () {
 install () {
   pushd "$repo_root" > /dev/null || return > /dev/null
 
-  install_uv || { echo -e "${BIRed}!!!${RST} uv installation failed"; return 1; }
-
   echo -e "${BIGreen}>>>${RST} Syncing dependencies with uv ..."
   uv sync --no-dev || { echo -e "${BIRed}!!!${RST} uv sync failed"; return 1; }
 
@@ -216,6 +214,15 @@ main() {
       set_env || return_code=$?
       exit $return_code
       ;;
+  esac
+
+  install_uv || return_code=$?
+  if [ $return_code != 0 ]; then
+    echo -e "${BIRed}!!!${RST} uv installation failed"
+    exit $return_code
+  fi
+
+  case $function_name in
     "listen")
       listen "${@:2}" || return_code=$?
       exit $return_code
