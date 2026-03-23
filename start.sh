@@ -34,23 +34,6 @@ BIWhite='\033[1;97m'      # White
 
 args=$@
 
-poetry_version="2.3.0"
-poetry_verbosity=""
-while :; do
-  case $1 in
-    --verbose)
-      poetry_verbosity="-vvv"
-      ;;
-    --)
-      shift
-      break
-      ;;
-    *)
-      break
-  esac
-  shift
-done
-
 ##############################################################################
 # Return absolute path
 # Globals:
@@ -65,8 +48,6 @@ realpath () {
 }
 
 repo_root=$(dirname "$(realpath ${BASH_SOURCE[0]})")
-poetry_home_root="$repo_root/.poetry"
-
 version_command="import os;exec(open(os.path.join('$repo_root', 'version.py')).read());print(__version__);"
 tool_version="$(python <<< ${version_command})"
 
@@ -102,12 +83,16 @@ detect_python () {
   fi
 }
 
-install_poetry () {
-  echo -e "${BIGreen}>>>${RST} Installing Poetry ..."
-  export POETRY_HOME="$poetry_home_root"
-  export POETRY_VERSION="$poetry_version"
+install_uv () {
+  if command -v uv >/dev/null 2>&1; then
+    echo -e "${BIGreen}>>>${RST} uv already installed: $(uv --version)"
+    return 0
+  fi
+  echo -e "${BIGreen}>>>${RST} Installing uv ..."
+  export UV_UNMANAGED_INSTALL="$repo_root/.uv"
   command -v curl >/dev/null 2>&1 || { echo -e "${BIRed}!!!${RST}${BIYellow} Missing ${RST}${BIBlue}curl${BIYellow} command.${RST}"; return 1; }
-  curl -sSL https://install.python-poetry.org/ | python -
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$repo_root/.uv/bin:$PATH"
 }
 
 ##############################################################################
@@ -129,49 +114,15 @@ clean_pyc () {
 }
 
 install () {
-  # Directories
   pushd "$repo_root" > /dev/null || return > /dev/null
 
-  echo -e "${BIGreen}>>>${RST} Reading Poetry ... \c"
-  poetry_path="$poetry_home_root/bin/poetry"
-  if [ -f $poetry_path ]; then
-    installed_poetry_version="$({$poetry_path} --version)"
-    if [[ $installed_poetry_version =~ $poetry_version ]]; then
-       echo -e "${BIGreen}>>>${RST} Already installed Poetry has wrong version."
-       echo -e "${BIGreen}>>>${RST} - Installed: $($installed_poetry_version)"
-       echo -e "${BIGreen}>>>${RST} - Expected:  $($poetry_version)"
-       echo -e "${BIGreen}>>>${RST} Reinstalling Poetry ..."
-       rm -rf $poetry_home_root
-    fi
-  fi
+  install_uv || { echo -e "${BIRed}!!!${RST} uv installation failed"; return 1; }
 
-  if [ -f $poetry_path ]; then
-    echo -e "${BIGreen}OK${RST}"
-  else
-    echo -e "${BIYellow}NOT FOUND${RST}"
-    install_poetry || { echo -e "${BIRed}!!!${RST} Poetry installation failed"; return 1; }
-  fi
-
-  if [ -f "$repo_root/poetry.lock" ]; then
-    echo -e "${BIGreen}>>>${RST} Updating dependencies ..."
-  else
-    echo -e "${BIGreen}>>>${RST} Installing dependencies ..."
-  fi
-
-  $poetry_path install --no-root $poetry_verbosity || { echo -e "${BIRed}!!!${RST} Poetry environment installation failed"; return 1; }
-  if [ $? -ne 0 ] ; then
-    echo -e "${BIRed}!!!${RST} Virtual environment creation failed."
-    return 1
-  fi
+  echo -e "${BIGreen}>>>${RST} Syncing dependencies with uv ..."
+  uv sync --no-dev || { echo -e "${BIRed}!!!${RST} uv sync failed"; return 1; }
 
   echo -e "${BIGreen}>>>${RST} Cleaning cache files ..."
   clean_pyc
-
-  # reinstall these because of bug in poetry? or cx_freeze?
-  # cx_freeze will crash on missing __pychache__ on these but
-  # reinstalling them solves the problem.
-  echo -e "${BIGreen}>>>${RST} Post-venv creation fixes ..."
-  $poetry_path run python -m pip install --disable-pip-version-check --force-reinstall pip
 }
 
 set_env () {
@@ -186,19 +137,19 @@ set_env () {
 
 listen () {
   pushd "$repo_root" > /dev/null || return > /dev/null
-  "$poetry_home_root/bin/poetry" run python "$repo_root/service" "$@"
+  "$repo_root/.venv/bin/python" "$repo_root/service" "$@"
 }
 
 create_bundle() {
   pushd "$repo_root" > /dev/null || return > /dev/null
   set_env
-  "$poetry_home_root/bin/poetry" run python "$repo_root/dependencies" create "$@"
+  "$repo_root/.venv/bin/python" "$repo_root/dependencies" create "$@"
 }
 
 list_bundles() {
   pushd "$repo_root" > /dev/null || return > /dev/null
   set_env
-  "$poetry_home_root/bin/poetry" run python "$repo_root/dependencies" list-bundles "$@"
+  "$repo_root/.venv/bin/python" "$repo_root/dependencies" list-bundles "$@"
 }
 
 create_docker_image_private() {
@@ -262,7 +213,7 @@ default_help() {
   echo "Usage: ./start.ps1 [target]"
   echo ""
   echo "Runtime targets:"
-  echo "  install                          Install Poetry and update venv by lock file."
+  echo "  install                          Install uv and sync venv."
   echo "  set-env                          Set all env vars in .env file."
   echo "  listen                           Start listener on a server."
   echo "  create                           Create dependency package for single bundle."

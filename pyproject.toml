@@ -1,26 +1,26 @@
-[tool.poetry]
+[project]
 name = "ayon-dependencies-tool"
 version = "1.1.7-dev"
 description = "Dependencies tool for AYON"
-authors = ["Ynput s.r.o. <info@ynput.io>"]
-package-mode = false
+authors = [
+    {name = "Ynput s.r.o.", email = "info@ynput.io"}
+]
+requires-python = ">=3.11,<4.0"
+dependencies = [
+    "pkginfo>=1.12",
+    "appdirs>=1.4",
+    "packaging>=24.0",
+    "pydantic>=1.10.2,<2.0.0",
+    "nxtools>=1.6",
+    "requests>=2.32.5",
+    "tomlkit>=0.14",
+    "ayon-python-api==1.2.14",
+    "click>=8.3",
+    "distro>=1.9.0; sys_platform == 'linux'",
+]
 
-[tool.poetry.dependencies]
-pkginfo = "^1.12"
-appdirs = "^1.4"
-poetry="~1.5.1"
-python = ">=3.11,<4.0"
-pydantic = "^1.10.2"
-nxtools = "^1.6"
-requests = "^2.32.5"
-tomlkit = "^0.14"
-ayon-python-api = "1.2.12"
-click = "^8.3"
-distro = { version="^1.9.0", markers = "sys_platform == 'linux'"}
+[dependency-groups]
+dev = ["pytest>=9.0"]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^9.0"
-
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+[tool.uv]
+package = false

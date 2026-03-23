@@ -59,7 +59,7 @@ RUN echo 'export PATH="$HOME/.pyenv/bin:$PATH"'>> $HOME/.bashrc \
 RUN source $HOME/.bashrc && pyenv install ${PYTHON_VERSION}
 
 COPY . /opt/ayon-dependencies-tool/
-RUN rm -rf /opt/ayon-dependencies-tool/.poetry || echo "No Poetry installed yet."
+RUN rm -rf /opt/ayon-dependencies-tool/.uv || true
 RUN chmod +x /opt/ayon-dependencies-tool/start.sh
 
 WORKDIR /opt/ayon-dependencies-tool
