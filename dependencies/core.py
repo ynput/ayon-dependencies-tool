@@ -9,6 +9,7 @@ import json
 import subprocess
 import collections
 import shutil
+import time
 
 from typing import Union, Any, Optional
 from packaging import version
@@ -942,6 +943,7 @@ def prepare_zip_venv(venv_path, runtime_site_packages, output_root):
     Returns:
         (str) path to zipped venv
     """
+    start = time.time()
     basename = create_dependency_package_basename()
     if PLATFORM_NAME == "linux":
         basename += f"-{distro.id()}{distro.major_version()}"
@@ -949,7 +951,7 @@ def prepare_zip_venv(venv_path, runtime_site_packages, output_root):
     venv_zip_path = os.path.join(output_root, zip_file_name)
     print(f"Zipping new package to {venv_zip_path}...")
     zip_venv(venv_path, runtime_site_packages, venv_zip_path)
-    print(f"Zip created!")
+    print(f"Zip created! ({time.time() - start:.2f}s)")
 
     return venv_zip_path
 
@@ -1132,12 +1134,14 @@ def upload_to_server(con, venv_zip_path, package_data):
     Returns:
         str: Package name.
     """
-
+    start = time.time()
+    print("Uploading package to server...")
     con.create_dependency_package(**package_data)
     con.upload_dependency_package(
         venv_zip_path,
         package_data["filename"]
     )
+    print(f"Upload finished! ({time.time() - start:.2f}s)")
 
 
 def update_bundle_with_package(con, bundle, package_data):
@@ -1150,7 +1154,10 @@ def update_bundle_with_package(con, bundle, package_data):
     """
 
     package_name = package_data["filename"]
-    print(f"Updating in {bundle.name} with {package_name}")
+    print(
+        f"Updating bundle '{bundle.name}' with"
+        f" new package '{package_name}'..."
+    )
     platform_name = package_data["platform_name"]
     dependency_packages = copy.deepcopy(bundle.dependency_packages)
     dependency_packages[platform_name] = package_name
@@ -1322,9 +1329,7 @@ def _create_bundle_package(
         )
 
     if not skip_upload:
-        print("Uploading package to server...")
         upload_to_server(con, venv_zip_path, package_data)
-        print("Updating bundle with new dependency package...")
         update_bundle_with_package(con, bundle, package_data)
 
     return package_data["filename"]
