@@ -901,8 +901,7 @@ def zip_venv(venv_folder, runtime_site_packages, zip_filepath):
                     continue
 
                 # Skip __pycache__ folders
-                root_name = os.path.basename(root)
-                if root_name == "__pycache__":
+                if "__pycache__" in root:
                     continue
 
                 dst_root = "dependencies"
