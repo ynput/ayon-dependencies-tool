@@ -1296,7 +1296,7 @@ def _create_bundle_package(
         output_root, installer["pythonVersion"]
     )
 
-    solve_dependencies(full_toml_data, output_root, venv_info.venv_path)
+    solve_dependencies(full_toml_data, installer["pythonVersion"])
 
     applicable_package = get_applicable_package(con, full_toml_data)
     if applicable_package:
@@ -1350,8 +1350,7 @@ def _create_package(
         )
         solve_dependencies(
             full_toml_data,
-            output_root,
-            venv_info.venv_path,
+            installer["pythonVersion"],
         )
 
     (

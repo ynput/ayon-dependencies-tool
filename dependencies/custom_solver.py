@@ -25,8 +25,7 @@ from typing import Any, Optional
 
 def solve_dependencies(
     full_toml_data: dict[str, Any],
-    output_root: str,
-    venv_path: str,
+    python_version: str,
 ) -> None:
     """Resolve all dependencies and pin runtimeDependencies to exact versions.
 
@@ -36,9 +35,7 @@ def solve_dependencies(
 
     Args:
         full_toml_data: Combined TOML data (installer + addon tomls merged).
-        output_root: Working directory for temp files.
-        venv_path: Path to the target virtual environment (used for python
-            version detection only).
+        python_version (str): Python version to use.
     """
     runtime_deps = full_toml_data["ayon"]["runtimeDependencies"]
     if not runtime_deps:
@@ -49,9 +46,6 @@ def solve_dependencies(
         for k, v in full_toml_data["tool"]["poetry"]["dependencies"].items()
         if k.lower() != "python"
     }
-    python_constraint = (
-        full_toml_data["tool"]["poetry"]["dependencies"].get("python") or ">=3.9"
-    )
 
     # Collect all deps for a single consistent resolution pass
     all_deps = dict(main_deps)
@@ -59,10 +53,10 @@ def solve_dependencies(
         all_deps.setdefault(k, v)
 
     print("Resolving all dependencies with uv ...")
-    all_resolved = _uv_compile(all_deps, python_constraint)
+    all_resolved = _uv_compile(all_deps, python_version)
 
     print("Resolving main dependency transitive closure with uv ...")
-    main_resolved_names = set(_uv_compile(main_deps, python_constraint))
+    main_resolved_names = set(_uv_compile(main_deps, python_version))
 
     # runtime-only = packages resolved that are NOT in the main transitive closure
     new_runtime: dict[str, str] = {}
@@ -87,14 +81,14 @@ class _Package:
 
 def _uv_compile(
     deps: dict[str, Any],
-    python_constraint: str,
+    python_version: str,
 ) -> dict[str, str]:
     """Run `uv pip compile` and return a dict of {normalised_name: version}.
 
     Args:
         deps: Mapping of package name → constraint/version (Poetry or PEP 508
               format, or a dict for git/url deps).
-        python_constraint: Python version constraint string (e.g. ">=3.9").
+        python_version (str): Explicit Python version to use.
 
     Returns:
         Dict mapping lower-cased canonical package name to exact version string.
@@ -110,9 +104,6 @@ def _uv_compile(
 
     if not requirements_lines:
         return {}
-
-    # Extract a concrete python version for --python-version flag
-    python_version = _extract_python_version(python_constraint)
 
     with tempfile.TemporaryDirectory(prefix="ayon_solver_") as tmp:
         req_in = os.path.join(tmp, "requirements.in")
