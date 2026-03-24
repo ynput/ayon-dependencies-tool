@@ -1,6 +1,6 @@
 [project]
 name = "ayon-dependencies-tool"
-version = "1.2.0"
+version = "1.2.1-dev"
 description = "Dependencies tool for AYON"
 authors = [
     {name = "Ynput s.r.o.", email = "info@ynput.io"}
