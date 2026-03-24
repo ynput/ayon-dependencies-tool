@@ -947,8 +947,9 @@ def prepare_zip_venv(venv_path, runtime_site_packages, output_root):
         basename += f"-{distro.id()}{distro.major_version()}"
     zip_file_name = f"{basename}.zip"
     venv_zip_path = os.path.join(output_root, zip_file_name)
-    print(f"Zipping new venv to {venv_zip_path}")
+    print(f"Zipping new package to {venv_zip_path}...")
     zip_venv(venv_path, runtime_site_packages, venv_zip_path)
+    print(f"Zip created!")
 
     return venv_zip_path
 
@@ -1321,7 +1322,9 @@ def _create_bundle_package(
         )
 
     if not skip_upload:
+        print("Uploading package to server...")
         upload_to_server(con, venv_zip_path, package_data)
+        print("Updating bundle with new dependency package...")
         update_bundle_with_package(con, bundle, package_data)
 
     return package_data["filename"]
