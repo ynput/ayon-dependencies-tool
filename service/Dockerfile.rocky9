@@ -49,13 +49,10 @@ WORKDIR /service
 
 RUN source $HOME/.bashrc && pyenv install ${PYTHON_VERSION} && pyenv local ${PYTHON_VERSION}
 
-RUN source $HOME/.bashrc \
-  && export POETRY_HOME="/service/.poetry" \
-  && curl -sSL https://install.python-poetry.org/ | python -
+RUN curl -LsSf https://astral.sh/uv/install.sh | UV_UNMANAGED_INSTALL="/service/.uv" sh
 
-ENV PATH /service/.poetry/bin:$PATH
+ENV PATH /service/.uv/bin:$PATH
 
-RUN poetry config virtualenvs.create true \
- && poetry install --no-interaction --no-ansi
+RUN uv sync --no-dev
 
-CMD source $HOME/.bashrc && poetry run python /service/listener.py
+CMD source $HOME/.bashrc && uv run python /service/listener.py

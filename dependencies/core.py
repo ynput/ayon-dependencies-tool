@@ -15,16 +15,15 @@ from packaging import version
 from dataclasses import dataclass
 
 import tomlkit as toml
-import requests
-from poetry.core.constraints.version import (
+from .version_utils import (
     parse_constraint,
     EmptyConstraint,
     VersionConstraint,
     VersionRangeConstraint,
+    Link,
+    is_url,
+    ParsedUrl,
 )
-from poetry.core.packages.utils.link import Link
-from poetry.core.packages.utils.utils import is_url
-from poetry.core.vcs.git import ParsedUrl
 
 import ayon_api
 from ayon_api import create_dependency_package_basename
@@ -37,7 +36,6 @@ else:
 from .utils import (
     run_subprocess,
     ZipFileLongPaths,
-    get_venv_executable,
     get_venv_site_packages,
     PACKAGE_ROOT,
 )
@@ -54,8 +52,6 @@ ConstraintClassesHint = Union[
     VersionRangeConstraint
 ]
 
-POETRY_VERSION = "2.0.1"
-
 PLATFORM_NAME = platform.system().lower()
 
 
@@ -65,95 +61,6 @@ class Bundle:
     addons: dict[str, str]
     dependency_packages: dict[str, str]
     installer_version: Union[str, None]
-
-
-def get_poetry_install_script() -> str:
-    """Get Poetry install script path.
-
-    Script is cached in downloads folder. If script is not cached ye, it
-        will be downloaded.
-
-    Returns:
-        str: Path to poetry install script.
-    """
-
-    downloads_dir = os.path.join(PACKAGE_ROOT, "downloads")
-    if not os.path.exists(downloads_dir):
-        os.makedirs(downloads_dir)
-    poetry_script_path = os.path.join(
-        downloads_dir, f"poetry-install-script.py")
-    if os.path.exists(poetry_script_path):
-        return poetry_script_path
-    response = requests.get("https://install.python-poetry.org")
-    with open(poetry_script_path, "wb") as stream:
-        stream.write(response.content)
-    return poetry_script_path
-
-
-def get_pyenv_arguments(
-    output_root: str, python_version: str
-) -> Union[list[str], None]:
-    """Use pyenv to install python version and use for venv creation.
-
-    Usage of pyenv is ideal as it allows to properly install runtime
-        dependencies.
-
-    Args:
-        output_root (str): Path to processing root.
-        python_version (str): Python version to install.
-
-    Returns:
-        Union[list[str], None]: List of arguments for subprocess or None.
-    """
-
-    pyenv_path = shutil.which("pyenv")
-    if not pyenv_path:
-        return
-    print(f"Installing Python {python_version} with pyenv")
-    install_args = [pyenv_path, "install", python_version, "--skip-existing"]
-    if PLATFORM_NAME == "windows":
-        install_args.append("--quiet")
-    result = subprocess.run(install_args)
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to install python {python_version}")
-    subprocess.run(
-        [pyenv_path, "local", python_version],
-        cwd=output_root
-    )
-    output = subprocess.check_output(
-        [pyenv_path, "which", "python"],
-        cwd=output_root
-    )
-    python_path = output.decode().strip()
-    return [python_path]
-
-
-def get_python_arguments(output_root: str, python_version: str) -> list[str]:
-    """Get arguments to run python.
-
-    By default, is trying to use 'pyenv' to install python version and use
-        it for venv creation. If 'pyenv' is not available, it will use
-        system python.
-
-    Args:
-        output_root (str): Path to processing root.
-        python_version (str): Python version to install.
-
-    Returns:
-        list[str]: List of arguments for subprocess.
-    """
-
-    args = get_pyenv_arguments(output_root, python_version)
-    if args is not None:
-        return args
-    print(
-        "Failed to use pyenv. Using system python, this may cause that"
-        " package will be incompatible package with installer."
-    )
-    python_path = shutil.which("python3")
-    if not python_path:
-        python_path = shutil.which("python")
-    return [python_path]
 
 
 def get_bundles(con: ayon_api.ServerAPI) -> dict[str, Bundle]:
@@ -651,74 +558,91 @@ def get_full_toml(base_toml_data, addon_tomls):
 
 class VenvInfo:
     def __init__(
-        self, root, poetry_bin, poetry_env, venv_path, python_version
+        self, root, venv_path, python_version
     ):
         self.root = root
-        self.poetry_bin = poetry_bin
-        self.poetry_env = poetry_env
         self.venv_path = venv_path
         self.python_version = python_version
 
+    @property
+    def venv_python(self):
+        if PLATFORM_NAME == "windows":
+            return os.path.join(self.venv_path, "Scripts", "python.exe")
+        return os.path.join(self.venv_path, "bin", "python")
+
+
+def _find_uv() -> str:
+    """Locate the uv executable."""
+    uv = shutil.which("uv")
+    if uv:
+        return uv
+    for candidate in [
+        os.path.expanduser("~/.local/bin/uv"),
+        os.path.expanduser("~/.cargo/bin/uv"),
+        "/usr/local/bin/uv",
+    ]:
+        if os.path.isfile(candidate):
+            return candidate
+    raise RuntimeError(
+        "uv executable not found. "
+        "Install uv: https://docs.astral.sh/uv/getting-started/installation/"
+    )
+
 
 def prepare_new_venv(output_root, python_version):
-    """Let Poetry create new venv in 'venv_folder' from 'full_toml_data'.
+    """Create a new virtual environment using uv.
 
     Args:
         output_root (str): Path where venv should be created.
         python_version (str): Python version to use.
 
-    Raises:
-        RuntimeError: Exception is raised if process finished with nonzero
-            return code.
-    """
+    Returns:
+        VenvInfo: Information about the created venv.
 
+    Raises:
+        RuntimeError: If venv creation fails.
+    """
     print(f"Preparing new venv in {output_root}")
 
-    python_args = get_python_arguments(output_root, python_version)
+    uv_bin = _find_uv()
 
-    poetry_script = get_poetry_install_script()
-    poetry_home = os.path.join(output_root, ".poetry")
-    poetry_bin = os.path.join(poetry_home, "bin", "poetry")
     venv_path = os.path.join(output_root, ".venv")
 
-    env = dict(os.environ.items())
-    env["POETRY_VERSION"] = POETRY_VERSION
-    env["POETRY_HOME"] = poetry_home
-    env["POETRY_REQUESTS_TIMEOUT"] = "300"
-    # Create poetry in output root
-    subprocess.call(python_args + [poetry_script], env=env, cwd=output_root)
-
-    # Create venv using poetry
-    run_subprocess(
-        python_args + ["-m", "venv", venv_path],
-        env=env,
-        cwd=output_root
+    return_code = run_subprocess(
+        [uv_bin, "python", "pin", python_version],
+        cwd=output_root,
     )
-    env["VIRTUAL_ENV"] = venv_path
-    # Change poetry config to ignore venv in poetry
-    for config_key, config_value in (
-        ("virtualenvs.create", "false"),
-        ("virtualenvs.in-project", "false"),
-    ):
-        run_subprocess(
-            [poetry_bin, "config", config_key, config_value, "--local"],
-            env=env,
-            cwd=output_root
+    if return_code != 0:
+        raise RuntimeError(
+            f"Failed to create virtual environment at {venv_path}"
         )
 
-    return VenvInfo(
-        output_root,
-        poetry_bin,
-        env,
-        venv_path,
-        python_version
+    return_code = run_subprocess(
+        [uv_bin, "venv", venv_path],
+        cwd=output_root,
     )
+    if return_code != 0:
+        raise RuntimeError(
+            f"Failed to create virtual environment at {venv_path}"
+        )
+
+    return VenvInfo(output_root, venv_path, python_version)
 
 
-def install_poetry(
+def install_dependencies(
     full_toml_data, installer, venv_info: VenvInfo
 ):
-    toml_path = os.path.join(venv_info.root, "pyproject.toml")
+    """Install dependencies into the venv using uv.
+
+    Args:
+        full_toml_data: Combined TOML data with all merged dependencies.
+        installer: Installer dict from AYON server.
+        venv_info: Venv metadata returned by prepare_new_venv.
+
+    Returns:
+        tuple: (runtime_site_packages path, installed_installer_runtime_deps set)
+    """
+    uv_bin = _find_uv()
 
     _convert_url_constraints(full_toml_data)
 
@@ -747,14 +671,26 @@ def install_poetry(
             installed_installer_runtime_deps.add(package_name)
             toml_dependencies[package_name] = package_version
 
-    with open(toml_path, "w") as stream:
-        toml.dump(full_toml_data, stream)
+    # Build requirements list from the merged toml data
+    requirements_lines = []
+    toml_dependencies = full_toml_data["tool"]["poetry"]["dependencies"]
+    for name, value in toml_dependencies.items():
+        if name.lower() == "python":
+            continue
+        req = _dep_value_to_requirement(name, value)
+        if req:
+            requirements_lines.append(req)
 
-    # Install dependencies from pyproject.toml
+    requirements_path = os.path.join(venv_info.root, "requirements_main.txt")
+    with open(requirements_path, "w") as stream:
+        stream.write("\n".join(requirements_lines) + "\n")
+
     return_code = run_subprocess(
-        [venv_info.poetry_bin, "install", "--no-root", "--ansi"],
-        env=venv_info.poetry_env,
-        cwd=venv_info.venv_path
+        [
+            uv_bin, "pip", "install",
+            "-r", requirements_path,
+        ],
+        cwd=venv_info.root,
     )
     if return_code != 0:
         raise RuntimeError(f"Preparation of {venv_info.venv_path} failed!")
@@ -764,8 +700,7 @@ def install_poetry(
     _install_runtime_dependencies(
         runtime_dependencies,
         runtime_root,
-        venv_info.poetry_bin,
-        venv_info.poetry_env
+        uv_bin,
     )
     if PLATFORM_NAME == "windows":
         runtime_site_packages = os.path.join(
@@ -790,58 +725,57 @@ def install_poetry(
     return runtime_site_packages, installed_installer_runtime_deps
 
 
+def _dep_value_to_requirement(name: str, value) -> Optional[str]:
+    """Convert a Poetry-style dep entry to a PEP 508 requirement string."""
+    from .custom_solver import _dep_to_requirement
+    return _dep_to_requirement(name, value)
+
+
 def _install_runtime_dependencies(
-    runtime_dependencies, runtime_root, poetry_bin, env
+    runtime_dependencies, runtime_root, uv_bin
 ):
-    """Install runtime dependencies from 'full_toml_data' to 'output_root'.
+    """Install runtime dependencies to a custom prefix directory.
 
     Args:
         runtime_dependencies (dict[str, str]): Runtime dependencies with
-            requested versions.
-        runtime_root (str): Path where runtime dependencies should be created.
-        poetry_bin (str): Path to poetry executable.
+            resolved exact versions.
+        runtime_root (str): Path where runtime dependencies should be installed.
+        uv_bin (str): Path to the uv executable.
     """
-
     requirements_lines = []
     for package_name, package_version in runtime_dependencies.items():
+        if not package_version:
+            requirements_lines.append(package_name)
+            continue
         parsed_version: VersionConstraint = parse_constraint(package_version)
         if parsed_version.is_any():
             package_version = ""
         elif parsed_version.is_simple():
-            package_version = f"=={package_version}"
+            package_version = f"=={parsed_version.min}"
         else:
-            min_ver = str(parsed_version.min)
-            if parsed_version.include_min:
-                min_ver = f">={min_ver}"
-            else:
-                min_ver = f">{min_ver}"
-            max_ver = str(parsed_version.max)
-            if parsed_version.include_max:
-                max_ver = f"<={max_ver}"
-            else:
-                max_ver = f"<{max_ver}"
-
-            package_version = f"{min_ver},{max_ver}"
+            parts = []
+            if parsed_version.min is not None:
+                op = ">=" if parsed_version.include_min else ">"
+                parts.append(f"{op}{parsed_version.min}")
+            if parsed_version.max is not None:
+                op = "<=" if parsed_version.include_max else "<"
+                parts.append(f"{op}{parsed_version.max}")
+            package_version = ",".join(parts)
 
         requirements_lines.append(f"{package_name}{package_version}")
 
-    requiements_path = os.path.join(runtime_root, "requirements.txt")
-    with open(requiements_path, "w") as stream:
-        stream.write("\n".join(requirements_lines))
-
-    args = [
-        poetry_bin, "run",
-        "python", "-m", "pip", "install",
-        "--upgrade",
-        "--timeout", "300",
-        "-r", requiements_path,
-        "--prefix", str(runtime_root),
-    ]
+    requirements_path = os.path.join(runtime_root, "requirements.txt")
+    with open(requirements_path, "w") as stream:
+        stream.write("\n".join(requirements_lines) + "\n")
 
     run_subprocess(
-        args,
-        env=env,
-        cwd=runtime_root
+        [
+            uv_bin, "pip", "install",
+            "--upgrade",
+            "-r", requirements_path,
+            "--prefix", str(runtime_root),
+        ],
+        cwd=runtime_root,
     )
 
 
@@ -914,15 +848,14 @@ def lock_to_toml_data(lock_path):
 
 
 def remove_existing_from_venv(
-    addons_venv_path,
+    venv_info,
     installer,
     installed_installer_runtime_deps
 ):
     """Loop through calculated addon venv and remove already installed libs.
 
     Args:
-        addons_venv_path (str): Path to newly created merged venv for active
-            addons.
+        venv_info: Venv metadata returned by prepare_new_venv.
         installer (dict[str, Any]): installer data from server.
         installed_installer_runtime_deps (set[str]): Installed runtime
             dependencies.
@@ -932,21 +865,27 @@ def remove_existing_from_venv(
             for testing
     """
 
-    pip_executable = get_venv_executable(addons_venv_path, "pip")
-    print("Removing packages from venv")
-    for package_name in sorted(
-        set(installer["pythonModules"])
+    uv_bin = _find_uv()
+
+    packages = sorted(
+        # Fix 'Babel' -> 'babel'  # TODO fix in ayon-launcher
+        "babel" if p == "Babel" else p
+        for p in set(installer["pythonModules"])
         | set(installed_installer_runtime_deps)
-    ):
-        # Fix 'Babel'
-        # TODO fix in ayon-launcher
-        if package_name == "Babel":
-            package_name = "babel"
+    )
+
+    if not packages:
+        return
+
+    print("Removing packages from venv")
+    for package_name in packages:
         print(f"- {package_name}")
-        run_subprocess(
-            [pip_executable, "uninstall", package_name, "--yes"],
-            bound_output=False
-        )
+
+    run_subprocess(
+        [uv_bin, "pip", "uninstall"] + packages,
+        bound_output=False,
+        cwd=venv_info.root,
+    )
 
 
 def zip_venv(venv_folder, runtime_site_packages, zip_filepath):
@@ -962,8 +901,7 @@ def zip_venv(venv_folder, runtime_site_packages, zip_filepath):
                     continue
 
                 # Skip __pycache__ folders
-                root_name = os.path.basename(root)
-                if root_name == "__pycache__":
+                if "__pycache__" in root:
                     continue
 
                 dst_root = "dependencies"
@@ -1009,8 +947,9 @@ def prepare_zip_venv(venv_path, runtime_site_packages, output_root):
         basename += f"-{distro.id()}{distro.major_version()}"
     zip_file_name = f"{basename}.zip"
     venv_zip_path = os.path.join(output_root, zip_file_name)
-    print(f"Zipping new venv to {venv_zip_path}")
+    print(f"Zipping new package to {venv_zip_path}...")
     zip_venv(venv_path, runtime_site_packages, venv_zip_path)
+    print(f"Zip created!")
 
     return venv_zip_path
 
@@ -1054,12 +993,13 @@ def get_python_modules(venv_path: str) -> dict[str, str]:
         dict[str, str] {'acre': '1.0.0',...}
     """
 
-    pip_executable: str = get_venv_executable(venv_path, "pip")
+    uv_bin = _find_uv()
 
     process: subprocess.Popen = subprocess.Popen(
-        [pip_executable, "freeze", venv_path, "--no-color"],
+        [uv_bin, "pip", "freeze", "--no-color"],
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
+        cwd=os.path.dirname(venv_path),
     )
     _stdout, _stderr = process.communicate()
     if process.returncode != 0:
@@ -1243,25 +1183,21 @@ def get_runtime_dependencies(
     runtime_site_packages: str, addons_venv_path: str
 ) -> dict[str, str]:
     
-    python_executable = get_venv_executable(addons_venv_path, "python")
+    uv_bin = _find_uv()
 
     # find out python version of created venv to add 'importlib_metadata' for python < 3.10
-    python_version = subprocess.check_output([
-        python_executable,
-        "-c",
-        "import platform;print(platform.python_version())"
-    ]).decode("utf-8").strip()
+    python_version = subprocess.check_output(
+        [
+            uv_bin, "run", "python",
+            "-c", "import platform;print(platform.python_version())"
+        ],
+        text=True,
+        cwd=addons_venv_path,
+    ).strip()
     
     #add importlib_metadata to runtime dependencies if python version is lower than 3.10
     print(f">>> Python version: {python_version}")
-    if tuple(map(int, python_version.split("."))) < (3, 10, 0):
-        print("Adding 'importlib_metadata' to runtime dependencies for Python < 3.10")
-        return_code = run_subprocess(
-            [python_executable, "-m", "pip", "install", "importlib_metadata"]
-        )
-        print(f">>> Return code for adding 'importlib_metadata': {return_code}")
 
-    python_executable = get_venv_executable(addons_venv_path, "python")
     script_path = os.path.join(PACKAGE_ROOT, "_runtime_deps.py")
 
     with tempfile.NamedTemporaryFile(
@@ -1276,7 +1212,10 @@ def get_runtime_dependencies(
         )
 
     try:
-        subprocess.run([python_executable, script_path, output_path])
+        subprocess.run(
+            ["uv", "run", "python", script_path, output_path],
+            cwd=addons_venv_path,
+        )
         with open(output_path) as stream:
             data = json.load(stream)
         return data["runtime_dependencies"]
@@ -1358,7 +1297,7 @@ def _create_bundle_package(
         output_root, installer["pythonVersion"]
     )
 
-    solve_dependencies(full_toml_data, output_root, venv_info.venv_path)
+    solve_dependencies(full_toml_data, installer["pythonVersion"])
 
     applicable_package = get_applicable_package(con, full_toml_data)
     if applicable_package:
@@ -1383,7 +1322,9 @@ def _create_bundle_package(
         )
 
     if not skip_upload:
+        print("Uploading package to server...")
         upload_to_server(con, venv_zip_path, package_data)
+        print("Updating bundle with new dependency package...")
         update_bundle_with_package(con, bundle, package_data)
 
     return package_data["filename"]
@@ -1412,14 +1353,13 @@ def _create_package(
         )
         solve_dependencies(
             full_toml_data,
-            output_root,
-            venv_info.venv_path,
+            installer["pythonVersion"],
         )
 
     (
         runtime_site_packages,
         installed_installer_runtime_deps
-    ) = install_poetry(
+    ) = install_dependencies(
         full_toml_data,
         installer,
         venv_info,
@@ -1427,7 +1367,7 @@ def _create_package(
 
     # remove already distributed libraries from addons specific venv
     remove_existing_from_venv(
-        venv_info.venv_path,
+        venv_info,
         installer,
         installed_installer_runtime_deps
     )

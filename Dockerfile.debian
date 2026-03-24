@@ -16,10 +16,6 @@ LABEL org.opencontainers.image.version=$VERSION
 
 USER root
 
-RUN mkdir /opt/ayon-dependencies-tool
-COPY . /opt/ayon-dependencies-tool/
-RUN chmod +x /opt/ayon-dependencies-tool/start.sh
-
 # update base
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -48,25 +44,17 @@ RUN apt-get update \
 
 SHELL ["/bin/bash", "-c"]
 
-# download and install pyenv
-RUN curl https://pyenv.run | bash
-RUN echo 'export PATH="$HOME/.pyenv/bin:$PATH"'>> $HOME/.bash_profile \
-    && echo 'eval "$(pyenv init -)"' >> $HOME/.bash_profile \
-    && echo 'eval "$(pyenv virtualenv-init -)"' >> $HOME/.bash_profile \
-    && echo 'eval "$(pyenv init --path)"' >> $HOME/.bash_profile
+RUN mkdir /opt/ayon-dependencies-tool
+COPY . /opt/ayon-dependencies-tool/
+RUN chmod +x /opt/ayon-dependencies-tool/start.sh
 
-# install python with pyenv
-RUN source $HOME/.bash_profile \
-    && pyenv install ${PYTHON_VERSION}
-
-WORKDIR /opt/ayon-dependencies-tool
-
-# set local python version
-RUN source $HOME/.bash_profile \
-    && pyenv local ${PYTHON_VERSION}
+# download and install uv
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+ENV PATH="/root/.local/bin/:$PATH"
 
 # create venv and create dependency package
-RUN source $HOME/.bash_profile \
-    && ./start.sh install
+WORKDIR /opt/ayon-dependencies-tool
+RUN source $HOME/.bash_profile && ./start.sh install
 
 CMD [/opt/ayon-dependencies-tool/start.sh, listen]

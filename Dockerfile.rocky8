@@ -50,26 +50,15 @@ RUN dnf -y install \
     && dnf clean all
 
 RUN mkdir /opt/ayon-dependencies-tool
-
-RUN curl https://pyenv.run | bash
-# ENV PYTHON_CONFIGURE_OPTS --enable-shared
-
-RUN echo 'export PATH="$HOME/.pyenv/bin:$PATH"'>> $HOME/.bashrc \
-    && echo 'eval "$(pyenv init -)"' >> $HOME/.bashrc \
-    && echo 'eval "$(pyenv virtualenv-init -)"' >> $HOME/.bashrc \
-    && echo 'eval "$(pyenv init --path)"' >> $HOME/.bashrc
-RUN source $HOME/.bashrc && pyenv install ${PYTHON_VERSION}
-
 COPY . /opt/ayon-dependencies-tool/
-RUN rm -rf /opt/ayon-dependencies-tool/.poetry || echo "No Poetry installed yet."
 RUN chmod +x /opt/ayon-dependencies-tool/start.sh
 
+# Download and install uv
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+ENV PATH="/root/.local/bin/:$PATH"
+
 WORKDIR /opt/ayon-dependencies-tool
-
-RUN source $HOME/.bashrc \
-    && pyenv local ${PYTHON_VERSION}
-
-RUN source $HOME/.bashrc \
-    && ./start.sh install
+RUN source $HOME/.bashrc && ./start.sh install
 
 CMD [/opt/ayon-dependencies-tool/start.sh, listen]

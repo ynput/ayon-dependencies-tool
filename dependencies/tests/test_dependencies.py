@@ -5,8 +5,7 @@ import pytest
 import shutil
 import platform
 
-from poetry.core.constraints.version import parse_constraint
-from poetry.core.constraints.generic import EmptyConstraint
+from ..version_utils import parse_constraint, VersionRange as EmptyConstraint
 
 from ..dependencies import (
     FileTomlProvider,

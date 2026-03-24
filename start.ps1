@@ -4,15 +4,10 @@ $arguments=@()
 if ($ARGS.Length -gt 1) {
     $arguments = $ARGS[1..($ARGS.Length - 1)]
 }
-
-$poetry_verbosity="-vv"
-
 $current_dir = Get-Location
 $repo_root_rel = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 $repo_root = (Get-Item $repo_root_rel).FullName
-$poetry_home_root="$repo_root\.poetry"
 
-$POETRY_VERSION="2.3.0"
 $TOOL_VERSION = Invoke-Expression -Command "python -c ""import os;import sys;content={};f=open(r'$($current_dir)/version.py');exec(f.read(),content);f.close();print(content['__version__'])"""
 
 
@@ -23,7 +18,7 @@ function Default-Func {
     Write-Host "Usage: ./start.ps1 [target]"
     Write-Host ""
     Write-Host "Runtime targets:"
-    Write-Host "  install                          Install Poetry and update venv by lock file."
+    Write-Host "  install                          Install uv and sync venv."
     Write-Host "  set-env                          Set all env vars in .env file."
     Write-Host "  listen                           Start listener on a server."
     Write-Host "  create                           Create dependency package for single bundle."
@@ -42,23 +37,18 @@ function Exit-WithCode($exitcode) {
    exit $exitcode
 }
 
-function Install-Poetry() {
-    Write-Host ">>> Installing Poetry ... "
-    $python = "python"
-    if (Get-Command "pyenv" -ErrorAction SilentlyContinue) {
-        if (-not (Test-Path -PathType Leaf -Path "$($repo_root)\.python-version")) {
-            $result = & pyenv global
-            if ($result -eq "no global version configured") {
-                Write-Host "!!! ", "Using pyenv but having no local or global version of Python set."
-                Exit-WithCode 1
-            }
-        }
-        $python = & pyenv which python
+function Install-Uv() {
+    Write-Host ">>> Checking for uv ..."
+    if (Get-Command "uv" -ErrorAction SilentlyContinue) {
+        Write-Host ">>> uv already installed: $(uv --version)"
+        return
     }
-    # Force POETRY_HOME to this directory
-    $env:POETRY_HOME = $poetry_home_root
-    $env:POETRY_VERSION = $POETRY_VERSION
-    (Invoke-WebRequest -Uri https://install.python-poetry.org/ -UseBasicParsing).Content | & $($python) -
+    Write-Host ">>> Installing uv ..."
+    $env:UV_UNMANAGED_INSTALL = "$repo_root\.uv"
+    Invoke-WebRequest -Uri "https://astral.sh/uv/install.ps1" -UseBasicParsing | Invoke-Expression
+    if (-not (Get-Command "uv" -ErrorAction SilentlyContinue)) {
+        $env:PATH = "$repo_root\.uv\bin;$env:PATH"
+    }
 }
 
 function CreateDockerPrivate {
@@ -129,25 +119,13 @@ function Restore-Cwd() {
 }
 
 function install {
-    # install dependencies for tool
-    if (Test-Path -PathType Container -Path "$($poetry_home_root)\bin") {
-        $result = & "$poetry_home_root\bin\poetry" --version
-        if (-not ($result.Contains($POETRY_VERSION))) {
-            Write-Host ">>> Already installed Poetry has wrong version."
-            Write-Host ">>> - Installed: $($result)"
-            Write-Host ">>> - Expected:  $($POETRY_VERSION)"
-            Write-Host ">>> Reinstalling Poetry ..."
-            Remove-Item -Recurse -Force "$($poetry_home_root)"
-        }
-    }
-    if (-not (Test-Path -PathType Container -Path "$($poetry_home_root)\bin")) {
-        Install-Poetry
-    }
+    # Install uv if needed, then sync the venv
+    Install-Uv
 
     Change-Cwd
 
-    Write-Host ">>> ", "Poetry config ... "
-    & "$poetry_home_root\bin\poetry" install --no-interaction --no-root --ansi  $poetry_verbosity
+    Write-Host ">>> Syncing dependencies with uv ..."
+    uv sync --no-dev
 }
 
 function set_env {
@@ -181,18 +159,18 @@ function main {
     } elseif ($FunctionName -eq "listen") {
         Change-Cwd
         set_env
-        & "$poetry_home_root\bin\poetry" run python "$($repo_root)\service" @arguments
+        & "$repo_root\.venv\Scripts\python.exe" "$($repo_root)\service" @arguments
     } elseif ($FunctionName -eq "setenv") {
         Change-Cwd
         set_env
     } elseif ($FunctionName -eq "create") {
         Change-Cwd
         set_env
-        & "$poetry_home_root\bin\poetry" run python "$($repo_root)\dependencies" create @arguments
+        & "$repo_root\.venv\Scripts\python.exe" "$($repo_root)\dependencies" create @arguments
     } elseif ($FunctionName -eq "listbundles") {
         Change-Cwd
         set_env
-        & "$poetry_home_root\bin\poetry" run python "$($repo_root)\dependencies" list-bundles @arguments
+        & "$repo_root\.venv\Scripts\python.exe" "$($repo_root)\dependencies" list-bundles @arguments
     } elseif ($FunctionName -eq "dockercreate") {
         Change-Cwd
         set_env

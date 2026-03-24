@@ -1,273 +1,299 @@
+"""Custom dependency solver using uv pip compile.
+
+Replaces the previous Poetry-based solver (poetry.factory.Factory,
+poetry.installation.installer.Installer, poetry.puzzle.solver.Solver).
+
+Strategy:
+  1. Compile all deps (main + runtime) together → consistent resolved versions.
+  2. Compile only main deps → their transitive closure.
+  3. runtime_only = all_resolved - main_transitive_closure.
+  4. Update full_toml_data["ayon"]["runtimeDependencies"] with exact pinned versions.
+"""
+
 import os
-import sys
-import copy
-import collections
-from typing import Any
-from pathlib import Path
-
-import tomlkit as toml
-from cleo.io.null_io import IO, NullIO
-from cleo.io.outputs.stream_output import StreamOutput
-from cleo.io.inputs.argv_input import ArgvInput
-from cleo.formatters.style import Style
-
-from packaging.utils import canonicalize_name
-
-from poetry.utils.env import VirtualEnv
-from poetry.repositories import RepositoryPool
-from poetry.repositories import Repository
-from poetry.installation.installer import Installer
-from poetry.repositories.lockfile_repository import LockfileRepository
-
-from poetry.factory import Factory
+import re
+import shutil
+import subprocess
+import tempfile
+from dataclasses import dataclass
+from typing import Any, Optional
 
 
-def create_io() -> IO:
-    input = ArgvInput()
-    input.set_stream(sys.stdin)
-
-    output = StreamOutput(sys.stdout)
-
-    error_output = StreamOutput(sys.stderr)
-
-    io = IO(input, output, error_output)
-
-    # Set our own CLI styles
-    formatter = io.output.formatter
-    formatter.set_style("c1", Style("cyan"))
-    formatter.set_style("c2", Style("default", options=["bold"]))
-    formatter.set_style("info", Style("blue"))
-    formatter.set_style("comment", Style("green"))
-    formatter.set_style("warning", Style("yellow"))
-    formatter.set_style("debug", Style("default", options=["dark"]))
-    formatter.set_style("success", Style("green"))
-
-    # Dark variants
-    formatter.set_style("c1_dark", Style("cyan", options=["dark"]))
-    formatter.set_style("c2_dark", Style("default", options=["bold", "dark"]))
-    formatter.set_style("success_dark", Style("green", options=["dark"]))
-
-    io.output.set_formatter(formatter)
-    io.error_output.set_formatter(formatter)
-
-    return io
-
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
 
 def solve_dependencies(
     full_toml_data: dict[str, Any],
-    output_root: str,
-    venv_path: str,
+    python_version: str,
 ) -> None:
-    output_root = Path(output_root)
-    venv_path = Path(venv_path)
+    """Resolve all dependencies and pin runtimeDependencies to exact versions.
 
-    all_dependencies = copy.deepcopy(full_toml_data)
-    runtime_dependencies = all_dependencies["ayon"]["runtimeDependencies"]
-    if not runtime_dependencies:
+    Mutates full_toml_data["ayon"]["runtimeDependencies"] in place:
+    packages that are part of the main dep transitive closure are removed;
+    the rest are pinned to exact resolved versions.
+
+    Args:
+        full_toml_data: Combined TOML data (installer + addon tomls merged).
+        python_version (str): Python version to use.
+    """
+    runtime_deps = full_toml_data["ayon"]["runtimeDependencies"]
+    if not runtime_deps:
         return
 
-    # Prepare all packages of all dependencies together
-    all_main_dependencies = all_dependencies["tool"]["poetry"]["dependencies"]
-    all_main_dependencies.update(runtime_dependencies)
-    all_solved_packages = _solve_dependencies(
-        all_dependencies, output_root, venv_path
-    )
-    packages_by_name = {
-        package.name.lower(): package
-        for package in all_solved_packages
+    main_deps = {
+        k: v
+        for k, v in full_toml_data["tool"]["poetry"]["dependencies"].items()
+        if k.lower() != "python"
     }
 
-    # Fill up the main dependencies with resolved versions
-    main_dependencies = {}
-    main_dep_names = set()
-    deps_queue = collections.deque(
-        full_toml_data["tool"]["poetry"]["dependencies"]
-    )
-    while deps_queue:
-        dep_name = deps_queue.popleft()
-        dep_name_low = dep_name.lower()
-        if dep_name_low == "python":
-            continue
+    # Collect all deps for a single consistent resolution pass
+    all_deps = dict(main_deps)
+    for k, v in runtime_deps.items():
+        all_deps.setdefault(k, v)
 
-        if dep_name_low in main_dep_names:
-            continue
-        main_dep_names.add(dep_name_low)
+    print("Resolving all dependencies with uv ...")
+    all_resolved = _uv_compile(all_deps, python_version)
 
-        package = packages_by_name.get(dep_name_low)
-        if package is None:
-            dep_name_low_t = dep_name_low.replace("_", "-")
-            package = packages_by_name.get(dep_name_low_t)
-            if package is None:
-                dep_name_low_t = dep_name_low.replace("-", "_")
-                package = packages_by_name.get(dep_name_low_t)
+    print("Resolving main dependency transitive closure with uv ...")
+    main_resolved_names = set(_uv_compile(main_deps, python_version))
 
-        if package is None:
+    # runtime-only = packages resolved that are NOT in the main transitive closure
+    new_runtime: dict[str, str] = {}
+    for name, version in all_resolved.items():
+        if name.lower() not in main_resolved_names:
+            new_runtime[name] = version
+
+    full_toml_data["ayon"]["runtimeDependencies"] = new_runtime
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _Package:
+    """Minimal package descriptor (for future compatibility if needed)."""
+    name: str
+    version: str
+    source_type: Optional[str] = None
+
+
+def _uv_compile(
+    deps: dict[str, Any],
+    python_version: str,
+) -> dict[str, str]:
+    """Run `uv pip compile` and return a dict of {normalised_name: version}.
+
+    Args:
+        deps: Mapping of package name → constraint/version (Poetry or PEP 508
+              format, or a dict for git/url deps).
+        python_version (str): Explicit Python version to use.
+
+    Returns:
+        Dict mapping lower-cased canonical package name to exact version string.
+    """
+    uv_bin = _find_uv()
+
+    # Build a requirements.in file
+    requirements_lines: list[str] = []
+    for name, value in deps.items():
+        req_line = _dep_to_requirement(name, value)
+        if req_line:
+            requirements_lines.append(req_line)
+
+    if not requirements_lines:
+        return {}
+
+    with tempfile.TemporaryDirectory(prefix="ayon_solver_") as tmp:
+        req_in = os.path.join(tmp, "requirements.in")
+        req_out = os.path.join(tmp, "requirements.txt")
+
+        with open(req_in, "w") as f:
+            f.write("\n".join(requirements_lines) + "\n")
+
+        cmd = [
+            uv_bin, "pip", "compile",
+            req_in,
+            "--output-file", req_out,
+            "--no-header",
+            "--quiet",
+        ]
+        if python_version:
+            cmd += ["--python-version", python_version]
+
+        print(f"Running: {' '.join(cmd)}")
+        result = subprocess.run(
+            cmd,
+            capture_output=False,
+            text=True,
+        )
+        if result.returncode != 0:
             raise RuntimeError(
-                f"Failed to find dependency '{dep_name}'"
-                " in resolved packages."
+                f"uv pip compile failed (exit {result.returncode}). "
+                "Check the error output above."
             )
 
-        version = _package_to_version(package)
-        main_dependencies[package.name] = version
-
-        for dep in package.requires:
-            deps_queue.append(dep.name)
-
-    runtime_dependencies = {}
-    for package_name, package in packages_by_name.items():
-        if package_name in main_dep_names:
-            continue
-        runtime_dependencies[package.name] = _package_to_version(package)
-
-    full_toml_data["ayon"]["runtimeDependencies"] = runtime_dependencies
+        return _parse_requirements_txt(req_out)
 
 
-def _package_to_version(package):
-    if package.source_type not in ("directory", "file", "url", "git"):
-        return package.version.text
+def _find_uv() -> str:
+    """Locate the uv executable."""
+    uv = shutil.which("uv")
+    if uv:
+        return uv
+    # Common install locations
+    for candidate in [
+        os.path.expanduser("~/.local/bin/uv"),
+        os.path.expanduser("~/.cargo/bin/uv"),
+        "/usr/local/bin/uv",
+    ]:
+        if os.path.isfile(candidate):
+            return candidate
+    raise RuntimeError(
+        "uv executable not found. Install uv: https://docs.astral.sh/uv/getting-started/installation/"
+    )
+
+
+def _dep_to_requirement(name: str, value: Any) -> Optional[str]:
+    """Convert a Poetry-style dep entry to a PEP 508 requirement line."""
+    if value is None:
+        return name
+
+    if isinstance(value, dict):
+        # Git dependency: {"git": "...", "rev": "..."}
+        if "git" in value:
+            url = value["git"]
+            rev = value.get("rev") or value.get("branch") or value.get("tag")
+            if rev:
+                return f"{name} @ git+{url}@{rev}"
+            return f"{name} @ git+{url}"
+        # URL dependency: {"url": "..."}
+        if "url" in value:
+            return f"{name} @ {value['url']}"
+        # Platform-conditional with version: {"version": "...", "markers": "..."}
+        version_part = value.get("version", "")
+        markers = value.get("markers", "")
+        req = f"{name}{_poetry_constraint_to_pep508(version_part)}"
+        if markers:
+            req += f" ; {markers}"
+        return req
+
+    # String constraint
+    return f"{name}{_poetry_constraint_to_pep508(str(value))}"
+
+
+def _poetry_constraint_to_pep508(constraint: str) -> str:
+    """Convert a Poetry version constraint to PEP 508 specifier string.
+
+    Returns the specifier part only (e.g. ">=1.0.0,<2.0.0").
+    Returns "" for wildcard/any constraints.
+    Handles compound constraints (comma-separated, e.g. "^1.0,<2").
+    """
+    constraint = constraint.strip()
+    if not constraint or constraint == "*":
+        return ""
+
+    # Handle compound constraints: split by comma, process each part, rejoin.
+    # We only split if there are multiple distinct specifiers (e.g. "^1.0,<2").
+    # PEP 508 already uses comma-and so we re-join with comma.
+    parts = _split_compound_constraint(constraint)
+    if len(parts) > 1:
+        converted = [_convert_single_constraint(p.strip()) for p in parts]
+        return ",".join(c for c in converted if c)
+
+    return _convert_single_constraint(constraint)
+
+
+def _split_compound_constraint(constraint: str) -> list:
+    """Split a compound Poetry constraint into individual parts.
+
+    Splits only on commas that separate top-level constraint parts,
+    not commas within a single specifier.
+    """
+    # Simple case: if no caret/tilde, PEP 508 commas are fine as-is
+    if "^" not in constraint and "~" not in constraint:
+        return [constraint]
+    # Split on comma followed by a specifier-starting character
+    import re
+    parts = re.split(r",\s*(?=[^,])", constraint)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _convert_single_constraint(constraint: str) -> str:
+    """Convert a single (non-compound) Poetry constraint to a PEP 508 specifier."""
+    constraint = constraint.strip()
+    if not constraint or constraint == "*":
+        return ""
+
+    # Already PEP 508 or numeric
+    if constraint.startswith((">=", "<=", "!=", "==", ">", "<")):
+        return constraint
+
+    # Caret: ^1.2.3
+    if constraint.startswith("^"):
+        from .version_utils import _parse_caret
+        return _parse_caret(constraint)
+
+    # Tilde: ~1.2.3
+    if constraint.startswith("~"):
+        from .version_utils import _parse_tilde
+        return _parse_tilde(constraint)
+
+    # Wildcard: 3.9.*
+    if ".*" in constraint:
+        base = constraint.replace(".*", "")
+        parts = base.split(".")
+        lower_parts = parts + ["0"] * (3 - len(parts))
+        upper_parts = parts[:-1] + [str(int(parts[-1]) + 1)] + ["0"] * (3 - len(parts))
+        return f">={'.'.join(lower_parts)},<{'.'.join(upper_parts)}"
+
+    # Bare version number → exact
+    try:
+        from packaging.version import Version
+        Version(constraint)  # validate
+        return f"=={constraint}"
+    except Exception:
+        return constraint
+
+
+def _extract_python_version(constraint: str) -> Optional[str]:
+    """Extract a usable python version string from a constraint like '>=3.9'.
+
+    Returns something like '3.9' or '3.11', or None if not determinable.
+    """
+    if not constraint:
+        return None
+    # Look for >= X.Y
+    m = re.search(r">=\s*(\d+\.\d+)", constraint)
+    if m:
+        return m.group(1)
+    # Look for bare X.Y.Z or X.Y
+    m = re.match(r"^(\d+\.\d+)", constraint.strip())
+    if m:
+        return m.group(1)
     return None
 
 
-def _solve_dependencies(
-    toml_data: dict[str, Any],
-    output_root: Path,
-    venv_path: Path,
-):
-    pyproject_toml_path = output_root / "pyproject.toml"
-    with open(pyproject_toml_path, "w") as stream:
-        toml.dump(toml_data, stream)
+def _parse_requirements_txt(path: str) -> dict[str, str]:
+    """Parse a pip-compiled requirements.txt into {lower_name: version}."""
+    result: dict[str, str] = {}
+    if not os.path.exists(path):
+        return result
 
-    poetry = Factory().create_poetry(
-        cwd=output_root,
-        io=None,
-        disable_plugins=False,
-        disable_cache=False,
-    )
-    env = VirtualEnv(Path(venv_path))
-    installer = CustomResolver(
-        create_io(),
-        env,
-        poetry.package,
-        poetry.locker,
-        poetry.pool,
-        poetry.config,
-        disable_cache=poetry.disable_cache,
-    )
-    installer.run()
-    os.remove(pyproject_toml_path)
-    return [
-        op.package
-        for op in installer.ops
-    ]
-
-
-class CustomResolver(Installer):
-    ops = []
-    def _do_install(self) -> int:
-        from poetry.puzzle.solver import Solver
-
-        locked_repository = Repository("poetry-locked")
-        if self._update:
-            if not self._lock and self._locker.is_locked():
-                locked_repository = self._locker.locked_repository()
-
-                # If no packages have been whitelisted (The ones we want to update),
-                # we whitelist every package in the lock file.
-                if not self._whitelist:
-                    for pkg in locked_repository.packages:
-                        self._whitelist.append(pkg.name)
-
-            # Checking extras
-            for extra in self._extras:
-                if extra not in self._package.extras:
-                    raise ValueError(f"Extra [{extra}] is not specified.")
-
-            self._io.write_line("<info>Updating dependencies</>")
-            solver = Solver(
-                self._package,
-                self._pool,
-                self._installed_repository.packages,
-                locked_repository.packages,
-                self._io,
-            )
-
-            with solver.provider.use_source_root(
-                source_root=self._env.path.joinpath("src")
-            ):
-                ops = solver.solve(use_latest=self._whitelist).calculate_operations()
-        else:
-            self._io.write_line("<info>Installing dependencies from lock file</>")
-
-            locked_repository = self._locker.locked_repository()
-
-            if not self._locker.is_fresh():
-                self._io.write_error_line(
-                    "<warning>"
-                    "Warning: poetry.lock is not consistent with pyproject.toml. "
-                    "You may be getting improper dependencies. "
-                    "Run `poetry lock [--no-update]` to fix it."
-                    "</warning>"
-                )
-
-            locker_extras = {
-                canonicalize_name(extra)
-                for extra in self._locker.lock_data.get("extras", {})
-            }
-            for extra in self._extras:
-                if extra not in locker_extras:
-                    raise ValueError(f"Extra [{extra}] is not specified.")
-
-            # If we are installing from lock
-            # Filter the operations by comparing it with what is
-            # currently installed
-            ops = self._get_operations_from_lock(locked_repository)
-
-        lockfile_repo = LockfileRepository()
-        self._populate_lockfile_repo(lockfile_repo, ops)
-
-        if not self.executor.enabled:
-            # If we are only in lock mode, no need to go any further
-            self._write_lock_file(lockfile_repo)
-            return 0
-
-        if self._groups is not None:
-            root = self._package.with_dependency_groups(list(self._groups), only=True)
-        else:
-            root = self._package.without_optional_dependency_groups()
-
-        if self._io.is_verbose():
-            self._io.write_line("")
-            self._io.write_line(
-                "<info>Finding the necessary packages for the current system</>"
-            )
-
-        # We resolve again by only using the lock file
-        pool = RepositoryPool(ignore_repository_names=True, config=self._config)
-
-        # Making a new repo containing the packages
-        # newly resolved and the ones from the current lock file
-        repo = Repository("poetry-repo")
-        for package in lockfile_repo.packages + locked_repository.packages:
-            if not package.is_direct_origin() and not repo.has_package(package):
-                repo.add_package(package)
-
-        pool.add_repository(repo)
-
-        solver = Solver(
-            root,
-            pool,
-            self._installed_repository.packages,
-            locked_repository.packages,
-            NullIO(),
-        )
-        # Everything is resolved at this point, so we no longer need
-        # to load deferred dependencies (i.e. VCS, URL and path dependencies)
-        solver.provider.load_deferred(False)
-
-        with solver.use_environment(self._env):
-            ops = solver.solve(use_latest=self._whitelist).calculate_operations(
-                with_uninstalls=self._requires_synchronization,
-                synchronize=self._requires_synchronization,
-                skip_directory=self._skip_directory,
-            )
-        self.ops = ops
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("-"):
+                continue
+            # Handle VCS / URL deps: "name @ git+..."  → skip version pinning
+            if " @ " in line:
+                name = line.split(" @ ")[0].strip()
+                result[name.lower()] = None
+                continue
+            # Normal: name==version (with possible extras)
+            m = re.match(r"^([A-Za-z0-9_.\-\[\]]+)==([^\s;]+)", line)
+            if m:
+                name = re.sub(r"\[.*\]", "", m.group(1)).strip()
+                result[name.lower()] = m.group(2)
+    return result
