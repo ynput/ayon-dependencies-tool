@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.11, <4.0"
 
 [[package]]
@@ -13,7 +13,7 @@ wheels = [
 
 [[package]]
 name = "ayon-dependencies-tool"
-version = "1.1.7.dev0"
+version = "1.2.1.dev0"
 source = { virtual = "." }
 dependencies = [
     { name = "appdirs" },
@@ -36,7 +36,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "appdirs", specifier = ">=1.4" },
-    { name = "ayon-python-api", specifier = "==1.2.14" },
+    { name = "ayon-python-api", specifier = "==1.2.19" },
     { name = "click", specifier = ">=8.3" },
     { name = "distro", marker = "sys_platform == 'linux'", specifier = ">=1.9.0" },
     { name = "nxtools", specifier = ">=1.6" },
@@ -52,15 +52,15 @@ dev = [{ name = "pytest", specifier = ">=9.0" }]
 
 [[package]]
 name = "ayon-python-api"
-version = "1.2.14"
+version = "1.2.19"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
     { name = "unidecode" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ca/4a/b931e51dfdfb145e80da79b1c48f571e00de872bc3379c1c73ebf46c652f/ayon_python_api-1.2.14.tar.gz", hash = "sha256:40cc6e4f462ca6ba25bcd29dfe8fc203a001e58bfc0fece50512b45360ea70ad", size = 169529, upload-time = "2026-03-20T12:11:26.539Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/7f/79030916b7dab1c568f08844a4550ee6f0f11da9f6fed28b391d14745cb6/ayon_python_api-1.2.19.tar.gz", hash = "sha256:c07d2302c717d747c949175c6f17688fa0ce67f652eefecec20a56b13000fd00", size = 174409, upload-time = "2026-05-15T12:36:12.771Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/52/bf/f1848e89b6bc3b18641d9b0fe45010c45c788f31c490cb63e1ac91e78455/ayon_python_api-1.2.14-py3-none-any.whl", hash = "sha256:e98f31485ccff02fed997a06ae0c15e1868e2d2379bd30128265d5486eeb5f77", size = 169360, upload-time = "2026-03-20T12:11:24.823Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/d4/d156cbed15c375765245c94bd05900d9bf938e601932b7b21d6efcf8726d/ayon_python_api-1.2.19-py3-none-any.whl", hash = "sha256:817bfe71e823af43b73363e650911e5e82b88ae3f7bc802934957c952ebf439f", size = 173667, upload-time = "2026-05-15T12:36:11.597Z" },
 ]
 
 [[package]]
