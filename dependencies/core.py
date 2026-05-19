@@ -1079,6 +1079,7 @@ def prepare_package_data(
 
     return {
         "filename": package_name,
+        "distro_short ": distro_short,
         "python_version": python_version,
         "python_modules": python_modules,
         "source_addons": copy.deepcopy(addons),
