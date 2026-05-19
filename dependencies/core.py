@@ -1046,6 +1046,7 @@ def calculate_hash(filepath):
 
 def prepare_package_data(
     venv_zip_path: str,
+    python_version: str,
     addons: dict[str, str],
     installer_version: str,
     runtime_dependencies: dict[str, str],
@@ -1072,8 +1073,14 @@ def prepare_package_data(
     package_name = os.path.basename(venv_zip_path)
     checksum = calculate_hash(venv_zip_path)
 
+    distro_short = None
+    if PLATFORM_NAME == "linux":
+        distro_short = f"{distro.id()}{distro.major_version()}"
+
     return {
         "filename": package_name,
+        "distro_short ": distro_short,
+        "python_version": python_version,
         "python_modules": python_modules,
         "source_addons": copy.deepcopy(addons),
         "installer_version": installer_version,
@@ -1388,6 +1395,7 @@ def _create_package(
 
     package_data = prepare_package_data(
         venv_zip_path,
+        venv_info.python_version,
         addons,
         installer["version"],
         runtime_dependencies,
