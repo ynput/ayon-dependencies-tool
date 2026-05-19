@@ -14,7 +14,7 @@ dependencies = [
     "nxtools>=1.6",
     "requests>=2.32.5",
     "tomlkit>=0.14",
-    "ayon-python-api==1.2.14",
+    "ayon-python-api==1.2.19",
     "click>=8.3",
     "distro>=1.9.0; sys_platform == 'linux'",
 ]
