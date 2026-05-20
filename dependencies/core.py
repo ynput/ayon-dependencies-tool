@@ -1079,7 +1079,7 @@ def prepare_package_data(
 
     return {
         "filename": package_name,
-        "distro_short ": distro_short,
+        "distro_short": distro_short,
         "python_version": python_version,
         "python_modules": python_modules,
         "source_addons": copy.deepcopy(addons),
@@ -1143,6 +1143,12 @@ def upload_to_server(con, venv_zip_path, package_data):
     """
     start = time.time()
     print("Uploading package to server...")
+    # TODO remove this when 'create_dependency_package' does allow the
+    #   arguments
+    package_data = copy.deepcopy(package_data)
+    package_data.pop("python_version")
+    package_data.pop("distro_short")
+
     con.create_dependency_package(**package_data)
     con.upload_dependency_package(
         venv_zip_path,
