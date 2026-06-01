@@ -113,19 +113,19 @@ set_env () {
 
 listen () {
   pushd "$repo_root" > /dev/null || return > /dev/null
-  "$repo_root/.venv/bin/python" "$repo_root/service" "$@"
+  uv run python "$repo_root/service" "$@"
 }
 
 create_bundle() {
   pushd "$repo_root" > /dev/null || return > /dev/null
   set_env
-  "$repo_root/.venv/bin/python" "$repo_root/dependencies" create "$@"
+  uv run python "$repo_root/dependencies" create "$@"
 }
 
 list_bundles() {
   pushd "$repo_root" > /dev/null || return > /dev/null
   set_env
-  "$repo_root/.venv/bin/python" "$repo_root/dependencies" list-bundles "$@"
+  uv run python "$repo_root/dependencies" list-bundles "$@"
 }
 
 create_docker_image_private() {

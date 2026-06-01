@@ -159,18 +159,18 @@ function main {
     } elseif ($FunctionName -eq "listen") {
         Change-Cwd
         set_env
-        & "$repo_root\.venv\Scripts\python.exe" "$($repo_root)\service" @arguments
+        & uv run python "$($repo_root)\service" @arguments
     } elseif ($FunctionName -eq "setenv") {
         Change-Cwd
         set_env
     } elseif ($FunctionName -eq "create") {
         Change-Cwd
         set_env
-        & "$repo_root\.venv\Scripts\python.exe" "$($repo_root)\dependencies" create @arguments
+        & uv run python "$($repo_root)\dependencies" create @arguments
     } elseif ($FunctionName -eq "listbundles") {
         Change-Cwd
         set_env
-        & "$repo_root\.venv\Scripts\python.exe" "$($repo_root)\dependencies" list-bundles @arguments
+        & uv run python "$($repo_root)\dependencies" list-bundles @arguments
     } elseif ($FunctionName -eq "dockercreate") {
         Change-Cwd
         set_env
