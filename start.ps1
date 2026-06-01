@@ -165,7 +165,7 @@ function main {
     } elseif ($FunctionName -eq "listen") {
         Change-Cwd
         set_env
-        & "$repo_root\.venv\Scripts\python.exe" "$($repo_root)\service" @arguments
+        & uv run python "$($repo_root)\service" @arguments
     } elseif ($FunctionName -eq "setenv") {
         Change-Cwd
         set_env
