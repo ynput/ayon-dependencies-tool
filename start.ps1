@@ -172,7 +172,7 @@ function main {
     } elseif ($FunctionName -eq "create") {
         Change-Cwd
         set_env
-        & "$repo_root\.venv\Scripts\python.exe" "$($repo_root)\dependencies" create @arguments
+        & uv run python "$($repo_root)\dependencies" create @arguments
     } elseif ($FunctionName -eq "listbundles") {
         Change-Cwd
         set_env
