@@ -8,8 +8,7 @@ $current_dir = Get-Location
 $repo_root_rel = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 $repo_root = (Get-Item $repo_root_rel).FullName
 $local_uv_root = "$repo_root\.uv"
-$local_uv_bin = "$local_uv_root\bin"
-$local_uv_path = "$local_uv_bin\uv.exe"
+$local_uv_path = "$local_uv_root\uv.exe"
 
 $TOOL_VERSION = Invoke-Expression -Command "python -c ""import os;import sys;content={};f=open(r'$($current_dir)/version.py');exec(f.read(),content);f.close();print(content['__version__'])"""
 
@@ -51,7 +50,7 @@ function Install-Uv() {
         return
     }
     Write-Host ">>> Installing uv ..."
-    $env:UV_UNMANAGED_INSTALL = $local_uv_root
+    $env:UV_INSTALL_DIR = $local_uv_root
     Invoke-WebRequest -Uri "https://astral.sh/uv/install.ps1" -UseBasicParsing | Invoke-Expression
 }
 
@@ -119,9 +118,9 @@ function Change-Cwd() {
     if (Test-Path -PathType Container -Path $local_uv_path) {
         # Keep local uv first in PATH, but avoid duplicates.
         $pathParts = @($env:PATH -split ';' | Where-Object {
-            $_ -and ($_ -ne $local_uv_bin)
+            $_ -and ($_ -ne $local_uv_root)
         })
-        $env:PATH = @($local_uv_bin) + $pathParts -join ';'
+        $env:PATH = @($local_uv_root) + $pathParts -join ';'
     }
 }
 
