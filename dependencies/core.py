@@ -593,27 +593,56 @@ def prepare_new_venv(output_root, python_version):
 
     uv_bin = _find_uv()
 
-    venv_path = os.path.join(output_root, ".venv")
+    venv_info = VenvInfo(
+        output_root,
+        os.path.join(output_root, ".venv"),
+        python_version
+    )
+    return_code = run_subprocess(
+        [uv_bin, "python", "install", python_version],
+        venv_info=venv_info,
+    )
+    if return_code != 0:
+        raise RuntimeError(
+            f"Failed to install python {python_version}"
+        )
 
     return_code = run_subprocess(
         [uv_bin, "python", "pin", python_version],
-        cwd=output_root,
+        venv_info=venv_info,
     )
     if return_code != 0:
         raise RuntimeError(
-            f"Failed to create virtual environment at {venv_path}"
+            f"Failed to pin python {python_version}"
         )
 
     return_code = run_subprocess(
-        [uv_bin, "venv", venv_path],
-        cwd=output_root,
+        [
+            uv_bin, "venv", venv_info.venv_path, "--python", python_version
+        ],
+        venv_info=venv_info,
     )
     if return_code != 0:
         raise RuntimeError(
-            f"Failed to create virtual environment at {venv_path}"
+            f"Failed to create virtual environment at {venv_info.venv_path}"
         )
 
-    return VenvInfo(output_root, venv_path, python_version)
+    venv_version = subprocess.check_output(
+        [
+            uv_bin,
+            "run", "python",
+            "-c", "import platform; print(platform.python_version())"
+        ],
+        cwd=venv_info.root,
+        text=True,
+    ).strip()
+    if venv_version != python_version:
+        raise RuntimeError(
+            f"Creted venv with wrong python version: {venv_version}"
+            f" expected: {python_version}"
+        )
+
+    return venv_info
 
 
 def install_dependencies(
