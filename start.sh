@@ -49,8 +49,7 @@ realpath () {
 
 repo_root=$(dirname "$(realpath ${BASH_SOURCE[0]})")
 local_uv_root="$repo_root/.uv"
-local_uv_bin="$local_uv_root/bin"
-local_uv_path="$local_uv_bin/uv"
+local_uv_path="$local_uv_root/uv"
 version_command="import os;exec(open(os.path.join('$repo_root', 'version.py')).read());print(__version__);"
 tool_version="$(python <<< ${version_command})"
 
@@ -65,30 +64,32 @@ tool_version="$(python <<< ${version_command})"
 #   None
 ###############################################################################
 install_uv () {
-  if [ -d $local_uv_path ]; then
-    echo -e "${BIGreen}>>>${RST} uv already installed: $($local_uv_path --version)"
+  if command -v $local_uv_path >/dev/null 2>&1; then
+    echo -e "${BIGreen}>>>${RST} local uv already installed: $($local_uv_path --version)"
+    echo -e "${BIGreen}>>>${RST} - $local_uv_path"
     return 0
   fi
   if command -v uv >/dev/null 2>&1; then
     echo -e "${BIGreen}>>>${RST} uv already installed: $(uv --version)"
+    echo -e "${BIGreen}>>>${RST} - $(which uv)"
     return 0
   fi
   echo -e "${BIGreen}>>>${RST} Installing uv ..."
-  export UV_UNMANAGED_INSTALL=$local_uv_root
+  export UV_INSTALL_DIR=$local_uv_root
   command -v curl >/dev/null 2>&1 || { echo -e "${BIRed}!!!${RST}${BIYellow} Missing ${RST}${BIBlue}curl${BIYellow} command.${RST}"; return 1; }
   curl -LsSf https://astral.sh/uv/install.sh | sh
 }
 
 set_uv_path () {
-  if [ -d "$local_uv_bin" ]; then
+  if [ -d "$local_uv_root" ]; then
     # Keep local uv first in PATH, but avoid duplicates.
-    normalized_local_uv_bin="${local_uv_bin%/}"
+    normalized_local_uv_root="${local_uv_root%/}"
     deduped_path=""
     IFS=':' read -r -a path_parts <<< "$PATH"
     for path_part in "${path_parts[@]}"; do
       [ -z "$path_part" ] && continue
       normalized_part="${path_part%/}"
-      [ "$normalized_part" = "$normalized_local_uv_bin" ] && continue
+      [ "$normalized_part" = "$normalized_local_uv_root" ] && continue
       if [ -z "$deduped_path" ]; then
         deduped_path="$path_part"
       else
@@ -97,9 +98,9 @@ set_uv_path () {
     done
 
     if [ -z "$deduped_path" ]; then
-      export PATH="$local_uv_bin"
+      export PATH="$local_uv_root"
     else
-      export PATH="$local_uv_bin:$deduped_path"
+      export PATH="$local_uv_root:$deduped_path"
     fi
   fi
 }
@@ -237,10 +238,6 @@ main() {
   function_name="$(echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z]*//g')"
 
   case $function_name in
-    "install")
-      install || return_code=$?
-      exit $return_code
-      ;;
     "setenv")
       set_env || return_code=$?
       exit $return_code
@@ -255,6 +252,10 @@ main() {
   fi
 
   case $function_name in
+    "install")
+      install || return_code=$?
+      exit $return_code
+      ;;
     "listen")
       listen "${@:2}" || return_code=$?
       exit $return_code
