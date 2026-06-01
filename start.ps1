@@ -109,8 +109,12 @@ function CreatePackageWithDocker {
 
 function Change-Cwd() {
     Set-Location -Path $repo_root
-    if (-not (Get-Command "uv" -ErrorAction SilentlyContinue)) {
-        $env:PATH = "$repo_root\.uv;$env:PATH"
+    $unmanaged_uv = "$repo_root\.uv\bin"
+    if (Test-Path -PathType Container -Path $unmanaged_uv){
+        $pathParts = @($env:PATH -split ';' | Where-Object {
+            $_ -and ($_ -ne $unmanaged_uv)
+        })
+        $env:PATH = @($unmanaged_uv) + $pathParts -join ';'
     }
 
 }
