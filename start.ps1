@@ -9,6 +9,7 @@ $repo_root_rel = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 $repo_root = (Get-Item $repo_root_rel).FullName
 $local_uv_root = "$repo_root\.uv"
 $local_uv_bin = "$local_uv_root\bin"
+$local_uv_path = "$local_uv_bin\uv.exe"
 
 $TOOL_VERSION = Invoke-Expression -Command "python -c ""import os;import sys;content={};f=open(r'$($current_dir)/version.py');exec(f.read(),content);f.close();print(content['__version__'])"""
 
@@ -41,6 +42,10 @@ function Exit-WithCode($exitcode) {
 
 function Install-Uv() {
     Write-Host ">>> Checking for uv ..."
+    if (Test-Path -PathType Container -Path $local_uv_path) {
+        Write-Host ">>> local uv already installed: $(& $local_uv_path --version 2> $null)"
+        return
+    }
     if (Get-Command "uv" -ErrorAction SilentlyContinue) {
         Write-Host ">>> uv already installed: $(uv --version)"
         return
