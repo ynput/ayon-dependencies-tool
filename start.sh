@@ -48,6 +48,9 @@ realpath () {
 }
 
 repo_root=$(dirname "$(realpath ${BASH_SOURCE[0]})")
+local_uv_root="$repo_root/.uv"
+local_uv_bin="$local_uv_root/bin"
+local_uv_path="$local_uv_bin/uv"
 version_command="import os;exec(open(os.path.join('$repo_root', 'version.py')).read());print(__version__);"
 tool_version="$(python <<< ${version_command})"
 
@@ -62,15 +65,43 @@ tool_version="$(python <<< ${version_command})"
 #   None
 ###############################################################################
 install_uv () {
+  if [ -d $local_uv_path ]; then
+    echo -e "${BIGreen}>>>${RST} uv already installed: $($local_uv_path --version)"
+    return 0
+  fi
   if command -v uv >/dev/null 2>&1; then
     echo -e "${BIGreen}>>>${RST} uv already installed: $(uv --version)"
     return 0
   fi
   echo -e "${BIGreen}>>>${RST} Installing uv ..."
-  export UV_UNMANAGED_INSTALL="$repo_root/.uv"
+  export UV_UNMANAGED_INSTALL=$local_uv_root
   command -v curl >/dev/null 2>&1 || { echo -e "${BIRed}!!!${RST}${BIYellow} Missing ${RST}${BIBlue}curl${BIYellow} command.${RST}"; return 1; }
   curl -LsSf https://astral.sh/uv/install.sh | sh
-  export PATH="$repo_root/.uv/bin:$PATH"
+}
+
+set_uv_path () {
+  if [ -d "$local_uv_bin" ]; then
+    # Keep local uv first in PATH, but avoid duplicates.
+    normalized_local_uv_bin="${local_uv_bin%/}"
+    deduped_path=""
+    IFS=':' read -r -a path_parts <<< "$PATH"
+    for path_part in "${path_parts[@]}"; do
+      [ -z "$path_part" ] && continue
+      normalized_part="${path_part%/}"
+      [ "$normalized_part" = "$normalized_local_uv_bin" ] && continue
+      if [ -z "$deduped_path" ]; then
+        deduped_path="$path_part"
+      else
+        deduped_path="$deduped_path:$path_part"
+      fi
+    done
+
+    if [ -z "$deduped_path" ]; then
+      export PATH="$local_uv_bin"
+    else
+      export PATH="$local_uv_bin:$deduped_path"
+    fi
+  fi
 }
 
 ##############################################################################
@@ -217,6 +248,7 @@ main() {
   esac
 
   install_uv || return_code=$?
+  set_uv_path
   if [ $return_code != 0 ]; then
     echo -e "${BIRed}!!!${RST} uv installation failed"
     exit $return_code
