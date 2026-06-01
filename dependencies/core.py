@@ -40,6 +40,8 @@ from .utils import (
     get_venv_site_packages,
     PACKAGE_ROOT,
     VenvInfo,
+    get_venv_executable,
+    get_venv_python_version,
 )
 from .custom_solver import solve_dependencies
 
@@ -576,7 +578,9 @@ def _find_uv() -> str:
     )
 
 
-def prepare_new_venv(output_root, python_version):
+def prepare_new_venv(
+    output_root: str, python_version: str
+) -> VenvInfo:
     """Create a new virtual environment using uv.
 
     Args:
@@ -593,14 +597,11 @@ def prepare_new_venv(output_root, python_version):
 
     uv_bin = _find_uv()
 
-    venv_info = VenvInfo(
-        output_root,
-        os.path.join(output_root, ".venv"),
-        python_version
-    )
+    venv_path = os.path.join(output_root, ".venv")
+
     return_code = run_subprocess(
         [uv_bin, "python", "install", python_version],
-        venv_info=venv_info,
+        cwd=output_root,
     )
     if return_code != 0:
         raise RuntimeError(
@@ -609,7 +610,7 @@ def prepare_new_venv(output_root, python_version):
 
     return_code = run_subprocess(
         [uv_bin, "python", "pin", python_version],
-        venv_info=venv_info,
+        cwd=output_root,
     )
     if return_code != 0:
         raise RuntimeError(
@@ -618,35 +619,39 @@ def prepare_new_venv(output_root, python_version):
 
     return_code = run_subprocess(
         [
-            uv_bin, "venv", venv_info.venv_path, "--python", python_version
+            uv_bin, "venv", venv_path, "--python", python_version
         ],
-        venv_info=venv_info,
+        cwd=output_root,
     )
     if return_code != 0:
         raise RuntimeError(
-            f"Failed to create virtual environment at {venv_info.venv_path}"
+            f"Failed to create virtual environment at {venv_path}"
         )
 
-    venv_version = subprocess.check_output(
-        [
-            uv_bin,
-            "run", "python",
-            "-c", "import platform; print(platform.python_version())"
-        ],
-        cwd=venv_info.root,
-        text=True,
-    ).strip()
+    venv_version = get_venv_python_version(
+        uv_bin,
+        output_root
+    )
     if venv_version != python_version:
         raise RuntimeError(
             f"Creted venv with wrong python version: {venv_version}"
             f" expected: {python_version}"
         )
 
-    return venv_info
+    executable_path = get_venv_executable(uv_bin, output_root)
+
+    return VenvInfo(
+        output_root,
+        venv_path,
+        python_version,
+        executable_path,
+    )
 
 
 def install_dependencies(
-    full_toml_data, installer, venv_info: VenvInfo
+    full_toml_data: dict[str, Any],
+    installer: dict[str, Any],
+    venv_info: VenvInfo,
 ):
     """Install dependencies into the venv using uv.
 
@@ -706,7 +711,7 @@ def install_dependencies(
             uv_bin, "pip", "install",
             "-r", requirements_path,
         ],
-        cwd=venv_info.root,
+        venv_info=venv_info,
     )
     if return_code != 0:
         raise RuntimeError(f"Preparation of {venv_info.venv_path} failed!")
@@ -717,6 +722,7 @@ def install_dependencies(
         runtime_dependencies,
         runtime_root,
         uv_bin,
+        venv_info,
     )
     if PLATFORM_NAME == "windows":
         runtime_site_packages = os.path.join(
@@ -748,7 +754,10 @@ def _dep_value_to_requirement(name: str, value) -> Optional[str]:
 
 
 def _install_runtime_dependencies(
-    runtime_dependencies, runtime_root, uv_bin
+    runtime_dependencies: dict[str, str],
+    runtime_root: str,
+    uv_bin: str,
+    venv_info: VenvInfo,
 ):
     """Install runtime dependencies to a custom prefix directory.
 
@@ -757,6 +766,8 @@ def _install_runtime_dependencies(
             resolved exact versions.
         runtime_root (str): Path where runtime dependencies should be installed.
         uv_bin (str): Path to the uv executable.
+        venv_info: Venv metadata returned by prepare_new_venv.
+
     """
     requirements_lines = []
     for package_name, package_version in runtime_dependencies.items():
@@ -791,7 +802,7 @@ def _install_runtime_dependencies(
             "-r", requirements_path,
             "--prefix", str(runtime_root),
         ],
-        cwd=runtime_root,
+        venv_info=venv_info,
     )
 
 
@@ -899,7 +910,6 @@ def remove_existing_from_venv(
 
     run_subprocess(
         [uv_bin, "pip", "uninstall"] + packages,
-        bound_output=False,
         cwd=venv_info.root,
     )
 
@@ -1215,23 +1225,10 @@ def is_file_deletable(filepath):
 
 
 def get_runtime_dependencies(
-    runtime_site_packages: str, addons_venv_path: str
+    runtime_site_packages: str, venv_info: VenvInfo
 ) -> dict[str, str]:
     
     uv_bin = _find_uv()
-
-    # find out python version of created venv to add 'importlib_metadata' for python < 3.10
-    python_version = subprocess.check_output(
-        [
-            uv_bin, "run", "python",
-            "-c", "import platform;print(platform.python_version())"
-        ],
-        text=True,
-        cwd=addons_venv_path,
-    ).strip()
-    
-    #add importlib_metadata to runtime dependencies if python version is lower than 3.10
-    print(f">>> Python version: {python_version}")
 
     script_path = os.path.join(PACKAGE_ROOT, "_runtime_deps.py")
 
@@ -1248,8 +1245,8 @@ def get_runtime_dependencies(
 
     try:
         subprocess.run(
-            ["uv", "run", "python", script_path, output_path],
-            cwd=addons_venv_path,
+            [uv_bin, "run", "python", script_path, output_path],
+            cwd=venv_info.root,
         )
         with open(output_path) as stream:
             data = json.load(stream)
@@ -1332,7 +1329,9 @@ def _create_bundle_package(
         output_root, installer["pythonVersion"]
     )
 
-    solve_dependencies(full_toml_data, installer["pythonVersion"])
+    solve_dependencies(
+        full_toml_data, installer["pythonVersion"], venv_info
+    )
 
     applicable_package = get_applicable_package(con, full_toml_data)
     if applicable_package:
@@ -1369,9 +1368,9 @@ def _create_package(
     bundle_addons_toml: dict[str, Any],
     output_root: str,
     *,
-    venv_info: Optional[VenvInfo] = None,
-    full_toml_data: Optional[dict[str, Any]] = None,
-):
+    venv_info: VenvInfo | None = None,
+    full_toml_data: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], str]:
     if venv_info is None:
         venv_info = prepare_new_venv(
             output_root,
@@ -1387,6 +1386,7 @@ def _create_package(
         solve_dependencies(
             full_toml_data,
             installer["pythonVersion"],
+            venv_info,
         )
 
     (
@@ -1405,7 +1405,7 @@ def _create_package(
         installed_installer_runtime_deps
     )
     runtime_dependencies = get_runtime_dependencies(
-        runtime_site_packages, venv_info.venv_path
+        runtime_site_packages, venv_info
     )
 
     venv_zip_path = prepare_zip_venv(

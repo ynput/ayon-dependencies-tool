@@ -16,27 +16,43 @@ class VenvInfo:
         root: str,
         venv_path: str,
         python_version: str,
+        executable_path: str,
     ):
         self.root: str = root
         self.venv_path: str = venv_path
         self.python_version: str = python_version
-
-    @property
-    def venv_python(self) -> str:
-        if PLATFORM_NAME == "windows":
-            return os.path.join(self.venv_path, "Scripts", "python.exe")
-        return os.path.join(self.venv_path, "bin", "python")
+        self.executable_path: str = executable_path
 
 
 def get_venv_executable(uv_bin: str, venv_root: str) -> str:
     """Get path to executable in virtual environment.
 
     Args:
+        uv_bin (str): Path to uv binary.
         venv_root (str): Path to venv root.
-    """
 
+    """
     return subprocess.check_output(
         [uv_bin, "run", "python", "-c" "import sys;print(sys.executable)"],
+        text=True,
+        cwd=venv_root,
+    ).strip()
+
+
+def get_venv_python_version(uv_bin: str, venv_root: str) -> str:
+    """Get path to executable in virtual environment.
+
+    Args:
+        uv_bin (str): Path to uv binary.
+        venv_root (str): Path to venv root.
+
+    """
+    return subprocess.check_output(
+        [
+            uv_bin,
+            "run", "python",
+            "-c", "import platform; print(platform.python_version())"
+        ],
         text=True,
         cwd=venv_root,
     ).strip()
@@ -64,7 +80,7 @@ def get_venv_site_packages(venv_root):
 
 
 def run_subprocess(
-    cmd_args, *args, bound_output=True, **kwargs
+    cmd_args, *args, venv_info: VenvInfo | None = None, **kwargs
 ):
     """Convenience method for getting output errors for subprocess.
 
@@ -76,7 +92,6 @@ def run_subprocess(
         cmd_args (Union[Iterable[str], str]): Command or list of arguments
             passed to Popen.
         *args: Variable length arument list passed to Popen.
-        bound_output (bool): Output will be printed with bounded margins.
         **kwargs : Arbitrary keyword arguments passed to Popen. Is possible to
             pass `logging.Logger` object under "logger" if want to use
             different than lib's logger.
@@ -94,6 +109,15 @@ def run_subprocess(
     env = kwargs.get("env") or os.environ
     # Make sure environment contains only strings
     filtered_env = {str(k): str(v) for k, v in env.items()}
+
+    if venv_info is not None:
+        if "cwd" not in kwargs:
+            kwargs["cwd"] = venv_info.root
+        filtered_env["VIRTUAL_ENV"] = venv_info.venv_path
+        filtered_env["PATH"] = os.pathsep.join([
+            os.path.dirname(venv_info.executable_path),
+            filtered_env["PATH"]
+        ])
 
     # set overrides
     kwargs["env"] = filtered_env

@@ -18,6 +18,8 @@ import tempfile
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from .utils import VenvInfo
+
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -26,6 +28,7 @@ from typing import Any, Optional
 def solve_dependencies(
     full_toml_data: dict[str, Any],
     python_version: str,
+    venv_info: VenvInfo,
 ) -> None:
     """Resolve all dependencies and pin runtimeDependencies to exact versions.
 
@@ -53,10 +56,10 @@ def solve_dependencies(
         all_deps.setdefault(k, v)
 
     print("Resolving all dependencies with uv ...")
-    all_resolved = _uv_compile(all_deps, python_version)
+    all_resolved = _uv_compile(all_deps, python_version, venv_info)
 
     print("Resolving main dependency transitive closure with uv ...")
-    main_resolved_names = set(_uv_compile(main_deps, python_version))
+    main_resolved_names = set(_uv_compile(main_deps, python_version, venv_info))
 
     # runtime-only = packages resolved that are NOT in the main transitive closure
     new_runtime: dict[str, str] = {}
@@ -82,6 +85,7 @@ class _Package:
 def _uv_compile(
     deps: dict[str, Any],
     python_version: str,
+    venv_info: VenvInfo,
 ) -> dict[str, str]:
     """Run `uv pip compile` and return a dict of {normalised_name: version}.
 
@@ -112,6 +116,16 @@ def _uv_compile(
         with open(req_in, "w") as f:
             f.write("\n".join(requirements_lines) + "\n")
 
+        env = os.environ.copy()
+        env["VIRTUAL_ENV"] = venv_info.venv_path
+        env["PWD"] = venv_info.root
+        env["PATH"] = os.pathsep.join([
+            os.path.dirname(venv_info.executable_path),
+            env["PATH"]
+        ])
+        for key, value in sorted(env.items()):
+            print(key, value)
+
         cmd = [
             uv_bin, "pip", "compile",
             req_in,
@@ -125,8 +139,10 @@ def _uv_compile(
         print(f"Running: {' '.join(cmd)}")
         result = subprocess.run(
             cmd,
+            env=env,
             capture_output=False,
             text=True,
+            cwd=venv_info.root,
         )
         if result.returncode != 0:
             raise RuntimeError(
