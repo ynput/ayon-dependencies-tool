@@ -46,9 +46,6 @@ function Install-Uv() {
     Write-Host ">>> Installing uv ..."
     $env:UV_UNMANAGED_INSTALL = "$repo_root\.uv"
     Invoke-WebRequest -Uri "https://astral.sh/uv/install.ps1" -UseBasicParsing | Invoke-Expression
-    if (-not (Get-Command "uv" -ErrorAction SilentlyContinue)) {
-        $env:PATH = "$repo_root\.uv\bin;$env:PATH"
-    }
 }
 
 function CreateDockerPrivate {
@@ -111,7 +108,16 @@ function CreatePackageWithDocker {
 }
 
 function Change-Cwd() {
+    if ($env:VIRTUAL_ENV) {
+        Write-Host ">>> Deactivating existing venv: $env:VIRTUAL_ENV"
+        $env:VIRTUAL_ENV = $null
+        $env:VIRTUAL_ENV_PROMPT = $null
+    }
     Set-Location -Path $repo_root
+    if (-not (Get-Command "uv" -ErrorAction SilentlyContinue)) {
+        $env:PATH = "$repo_root\.uv;$env:PATH"
+    }
+
 }
 
 function Restore-Cwd() {
