@@ -7,9 +7,28 @@ import platform
 import zipfile
 
 PACKAGE_ROOT = os.path.dirname(os.path.abspath(__file__))
+PLATFORM_NAME = platform.system().lower()
 
 
-def get_venv_executable(uv_bin, venv_root):
+class VenvInfo:
+    def __init__(
+        self,
+        root: str,
+        venv_path: str,
+        python_version: str,
+    ):
+        self.root: str = root
+        self.venv_path: str = venv_path
+        self.python_version: str = python_version
+
+    @property
+    def venv_python(self) -> str:
+        if PLATFORM_NAME == "windows":
+            return os.path.join(self.venv_path, "Scripts", "python.exe")
+        return os.path.join(self.venv_path, "bin", "python")
+
+
+def get_venv_executable(uv_bin: str, venv_root: str) -> str:
     """Get path to executable in virtual environment.
 
     Args:

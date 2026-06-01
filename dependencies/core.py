@@ -39,6 +39,7 @@ from .utils import (
     ZipFileLongPaths,
     get_venv_site_packages,
     PACKAGE_ROOT,
+    VenvInfo,
 )
 from .custom_solver import solve_dependencies
 
@@ -555,21 +556,6 @@ def get_full_toml(base_toml_data, addon_tomls):
         print(f"  - {key} ({value})")
 
     return toml_data
-
-
-class VenvInfo:
-    def __init__(
-        self, root, venv_path, python_version
-    ):
-        self.root = root
-        self.venv_path = venv_path
-        self.python_version = python_version
-
-    @property
-    def venv_python(self):
-        if PLATFORM_NAME == "windows":
-            return os.path.join(self.venv_path, "Scripts", "python.exe")
-        return os.path.join(self.venv_path, "bin", "python")
 
 
 def _find_uv() -> str:
