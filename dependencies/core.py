@@ -1329,9 +1329,7 @@ def _create_bundle_package(
         output_root, installer["pythonVersion"]
     )
 
-    solve_dependencies(
-        full_toml_data, installer["pythonVersion"], venv_info
-    )
+    solve_dependencies(full_toml_data, venv_info)
 
     applicable_package = get_applicable_package(con, full_toml_data)
     if applicable_package:
@@ -1383,11 +1381,7 @@ def _create_package(
             installer_toml_data,
             bundle_addons_toml,
         )
-        solve_dependencies(
-            full_toml_data,
-            installer["pythonVersion"],
-            venv_info,
-        )
+        solve_dependencies(full_toml_data, venv_info)
 
     (
         runtime_site_packages,
