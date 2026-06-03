@@ -55,6 +55,6 @@ ENV PATH="/root/.local/bin/:$PATH"
 
 # create venv and create dependency package
 WORKDIR /opt/ayon-dependencies-tool
-RUN source $HOME/.bash_profile && ./start.sh install
+RUN source $HOME/.bashrc && ./start.sh install
 
 CMD [/opt/ayon-dependencies-tool/start.sh, listen]
