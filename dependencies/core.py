@@ -910,7 +910,7 @@ def remove_existing_from_venv(
 
     run_subprocess(
         [uv_bin, "pip", "uninstall"] + packages,
-        cwd=venv_info.root,
+        venv_info=venv_info,
     )
 
 
