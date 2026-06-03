@@ -27,7 +27,6 @@ from .utils import VenvInfo
 
 def solve_dependencies(
     full_toml_data: dict[str, Any],
-    python_version: str,
     venv_info: VenvInfo,
 ) -> None:
     """Resolve all dependencies and pin runtimeDependencies to exact versions.
@@ -56,10 +55,11 @@ def solve_dependencies(
         all_deps.setdefault(k, v)
 
     print("Resolving all dependencies with uv ...")
-    all_resolved = _uv_compile(all_deps, python_version, venv_info)
+    all_resolved = _uv_compile(all_deps, venv_info)
 
     print("Resolving main dependency transitive closure with uv ...")
-    main_resolved_names = set(_uv_compile(main_deps, python_version, venv_info))
+    main_resolved = _uv_compile(main_deps, venv_info)
+    main_resolved_names = set(main_resolved)
 
     # runtime-only = packages resolved that are NOT in the main transitive closure
     new_runtime: dict[str, str] = {}
@@ -84,7 +84,6 @@ class _Package:
 
 def _uv_compile(
     deps: dict[str, Any],
-    python_version: str,
     venv_info: VenvInfo,
 ) -> dict[str, str]:
     """Run `uv pip compile` and return a dict of {normalised_name: version}.
@@ -123,8 +122,6 @@ def _uv_compile(
             os.path.dirname(venv_info.executable_path),
             env["PATH"]
         ])
-        for key, value in sorted(env.items()):
-            print(key, value)
 
         cmd = [
             uv_bin, "pip", "compile",
@@ -133,8 +130,6 @@ def _uv_compile(
             "--no-header",
             "--quiet",
         ]
-        if python_version:
-            cmd += ["--python-version", python_version]
 
         print(f"Running: {' '.join(cmd)}")
         result = subprocess.run(
