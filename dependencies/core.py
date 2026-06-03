@@ -484,14 +484,14 @@ def _version_parse(version_value):
     return version.parse(version_value)
 
 
-def get_full_toml(base_toml_data, addon_tomls):
+def get_full_toml(installer_toml_data, addon_tomls):
     """Loops through list of local addon folder paths to create full .toml
 
     Full toml is used to calculate set of python dependencies for all enabled
     addons.
 
     Args:
-        base_toml_data (dict[str, Any]): Content of pyproject.toml from
+        installer_toml_data (dict[str, Any]): Content of pyproject.toml from
             ayon-launcher installer.
         addon_tomls (dict[str, Any]): Content of addon pyproject.toml
 
@@ -500,7 +500,7 @@ def get_full_toml(base_toml_data, addon_tomls):
     """
 
     # Fix git sources of installer dependencies
-    toml_data = copy.deepcopy(base_toml_data)
+    toml_data = copy.deepcopy(installer_toml_data)
     main_dependencies = toml_data["tool"]["poetry"]["dependencies"]
     modified_dependencies = {}
     for key, value in main_dependencies.items():
@@ -684,8 +684,8 @@ def install_dependencies(
 
     # Store installer runtime dependencies only if are installed
     installed_installer_runtime_deps = set()
+    toml_dependencies = full_toml_data["tool"]["poetry"]["dependencies"]
     if runtime_dependencies:
-        toml_dependencies = full_toml_data["tool"]["poetry"]["dependencies"]
         for package_name, package_version in (
             installer_runtime_dependencies.items()
         ):
@@ -694,7 +694,6 @@ def install_dependencies(
 
     # Build requirements list from the merged toml data
     requirements_lines = []
-    toml_dependencies = full_toml_data["tool"]["poetry"]["dependencies"]
     for name, value in toml_dependencies.items():
         if name.lower() == "python":
             continue
