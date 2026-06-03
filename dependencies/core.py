@@ -170,6 +170,7 @@ def get_installer_toml(installer: dict[str, Any]) -> dict[str, Any]:
     """
 
     python_modules = copy.deepcopy(installer["pythonModules"])
+    python_modules.update(installer["runtimePythonModules"])
     python_modules["python"] = installer["pythonVersion"]
     return {
         "tool": {
@@ -186,9 +187,7 @@ def get_installer_toml(installer: dict[str, Any]) -> dict[str, Any]:
             }
         },
         "ayon": {
-            "runtimeDependencies": copy.deepcopy(
-                installer["runtimePythonModules"]
-            )
+            "runtimeDependencies": {}
         }
     }
 
@@ -797,8 +796,8 @@ def _install_runtime_dependencies(
     run_subprocess(
         [
             uv_bin, "pip", "install",
-            "--upgrade",
             "-r", requirements_path,
+            "--no-deps",
             "--prefix", str(runtime_root),
         ],
         venv_info=venv_info,
