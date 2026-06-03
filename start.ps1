@@ -115,7 +115,7 @@ function CreatePackageWithDocker {
 
 function Change-Cwd() {
     Set-Location -Path $repo_root
-    if (Test-Path -PathType Container -Path $local_uv_path) {
+    if (Test-Path -PathType Container -Path $local_uv_root) {
         # Keep local uv first in PATH, but avoid duplicates.
         $pathParts = @($env:PATH -split ';' | Where-Object {
             $_ -and ($_ -ne $local_uv_root)
