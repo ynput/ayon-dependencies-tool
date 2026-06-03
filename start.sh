@@ -76,6 +76,7 @@ install_uv () {
   fi
   echo -e "${BIGreen}>>>${RST} Installing uv ..."
   export UV_INSTALL_DIR=$local_uv_root
+  export UV_NO_MODIFY_PATH="1"
   command -v curl >/dev/null 2>&1 || { echo -e "${BIRed}!!!${RST}${BIYellow} Missing ${RST}${BIBlue}curl${BIYellow} command.${RST}"; return 1; }
   curl -LsSf https://astral.sh/uv/install.sh | sh
 }

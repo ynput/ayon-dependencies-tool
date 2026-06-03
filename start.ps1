@@ -51,6 +51,7 @@ function Install-Uv() {
     }
     Write-Host ">>> Installing uv ..."
     $env:UV_INSTALL_DIR = $local_uv_root
+    $env:UV_NO_MODIFY_PATH = "1"
     Invoke-WebRequest -Uri "https://astral.sh/uv/install.ps1" -UseBasicParsing | Invoke-Expression
 }
 
