@@ -128,7 +128,7 @@ def get_bundle_addons_tomls(
         if value is not None
     }
     print("Getting dependencies for addons:")
-    for name, version in bundle_addons.values():
+    for name, version in sorted(bundle_addons.values()):
         print(f"  - {name} {version}")
     addon_tomls = get_all_addon_tomls(con)
 
