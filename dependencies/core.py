@@ -1359,7 +1359,6 @@ def _print_installer_data(installer: dict[str, Any]) -> None:
 
     deps = installer["pythonModules"]
     runtime_deps = installer["runtimePythonModules"]
-    deps["test"] = {"git": "Some very long git page", "documentation": "I have no idea what am I doing"}
 
     label = "AYON launcher"
     dep_label = "Dependencies:"
