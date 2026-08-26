@@ -1360,7 +1360,8 @@ def _print_installer_data(installer: dict[str, Any]) -> None:
     deps = installer["pythonModules"]
     runtime_deps = installer["runtimePythonModules"]
 
-    label = "AYON launcher"
+    version = installer["version"]
+    label = f"AYON launcher {version}"
     dep_label = "Dependencies:"
     runtime_dep_label = "Runtime Dependencies:"
     max_line = max(len(runtime_dep_label), len(label))
