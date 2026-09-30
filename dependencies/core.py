@@ -1,7 +1,6 @@
 import collections
 import copy
 import hashlib
-import itertools
 import json
 import os
 import platform
@@ -1300,56 +1299,30 @@ def _remove_tmpdir(tmpdir):
     return failed
 
 
-def _calculate_max_line(
-    deps: dict[str, Any], runtime_deps: dict[str, Any]
-) -> int:
-    max_line = 0
-    for key, value in itertools.chain(
-        deps.items(), runtime_deps.items()
-    ):
-        base = f"- {key}"
-        if not isinstance(value, dict):
-            line = f"{base}  {value}"
-            max_line = max(len(line), max_line)
-            continue
-
-        value_j = json.dumps(value, indent=2)
-        j_lines = value_j.splitlines()
-        base_l = len(base)
-        first_line = j_lines.pop(0)
-        _last_line = j_lines.pop(-1)
-        max_line = max(base_l + 2 + len(first_line), max_line)
-
-        for line in j_lines:
-            length = 2 + len(line)
-            if length > 77:
-                return 77
-            max_line = max(length, max_line)
-    return max_line
+_TABLE_FORMAT = "simple_outline"
+_DEP_HEADERS = ["Dependency", "Version"]
 
 
-def _print_dep_line(
-    key: str, value: str | dict[str, Any], max_line: int
-) -> None:
-    base = f"- {key}"
-    dif = max_line - len(base)
-    if not isinstance(value, dict):
-        value = str(value)
-        print(f"│{base}{str(value).rjust(dif)}│")
+def _format_dep_value(value: str | dict[str, Any]) -> str:
+    if isinstance(value, dict):
+        return json.dumps(value, indent=2)
+    return str(value)
+
+
+def _print_deps_table(label: str, deps: dict[str, Any]) -> None:
+    if not deps:
         return
-
-    value_j = json.dumps(value, indent=2)
-    j_lines = value_j.splitlines()
-    first_line = j_lines.pop(0)
-    last_line = j_lines.pop(-1)
-    j_dif = max_line - 2
-    print(f"│{base} {first_line.ljust(dif - 1)}│")
-    for line in j_lines:
-        if len(line) < 77:
-            print(f"│  {line.ljust(j_dif)}│")
-        else:
-            print(f"│  {line}")
-    print(f"│  {last_line.ljust(j_dif)}│")
+    rows = [
+        [key, _format_dep_value(value)]
+        for key, value in deps.items()
+    ]
+    print(label)
+    print(tabulate(
+        rows,
+        headers=_DEP_HEADERS,
+        tablefmt=_TABLE_FORMAT,
+        disable_numparse=True,
+    ))
 
 
 def _print_installer_data(installer: dict[str, Any]) -> None:
@@ -1357,70 +1330,33 @@ def _print_installer_data(installer: dict[str, Any]) -> None:
         print("!!! No installer data found !!!")
         return
 
-    deps = installer["pythonModules"]
-    runtime_deps = installer["runtimePythonModules"]
-
     table = [[installer["version"], installer["pythonVersion"]]]
     print("AYON launcher:")
-    print(tabulate(table, ["Version", "Python Version"], tablefmt="simple_outline"))
-
-
-    if deps:
-        print("Dependencies:")
-        print(
-            tabulate(
-                tabular_data=deps.items(), headers=["Dependency", "Version"], tablefmt="simple_outline"
-            ))
-
-    if runtime_deps:
-        print("Runtime Dependencies:")
-        print(
-            tabulate(
-                tabular_data=runtime_deps.items(),
-                headers=["Dependency", "Version"],
-                tablefmt="simple_outline"
-            ))
+    print(tabulate(
+        table,
+        headers=["Version", "Python Version"],
+        tablefmt=_TABLE_FORMAT,
+        disable_numparse=True,
+    ))
+    _print_deps_table("Dependencies:", installer["pythonModules"])
+    _print_deps_table(
+        "Runtime Dependencies:", installer["runtimePythonModules"]
+    )
 
 
 def _print_addons_data(addons: dict[str, dict[str, Any]]) -> None:
-    dep_label = "Dependencies:"
-    runtime_dep_label = "Runtime Dependencies:"
-
     for toml_data in addons.values():
         addon_name = toml_data["addon_name"]
         addon_version = toml_data["addon_version"]
 
-        addon_title = f"{addon_name} {addon_version}"
         runtime_deps = toml_data.get("ayon", {}).get("runtimeDependencies")
         deps = toml_data.get("tool", {}).get("poetry", {}).get("dependencies")
         if not runtime_deps and not deps:
             continue
-        if not runtime_deps:
-            runtime_deps = {}
 
-        if not deps:
-            deps = {}
-
-        max_line = max(len(runtime_dep_label), len(addon_title))
-        max_line = max(_calculate_max_line(deps, runtime_deps), max_line)
-
-        sep_mid = max_line * "─"
-        print(f"┌{sep_mid}┐")
-        print(f"│{addon_title.ljust(max_line)}│")
-        sep = f"│{sep_mid}│"
-        if deps:
-            print(sep)
-            print(f"│{dep_label.ljust(max_line)}│")
-            for key, value in deps.items():
-                _print_dep_line(key, value, max_line)
-
-        if runtime_deps:
-            print(sep)
-            print(f"│{runtime_dep_label.ljust(max_line)}│")
-            for key, value in runtime_deps.items():
-                _print_dep_line(key, value, max_line)
-
-        print(f"└{sep_mid}┘")
+        print(f"\nAddon {addon_name} {addon_version}:")
+        _print_deps_table("Dependencies:", deps)
+        _print_deps_table("Runtime Dependencies:", runtime_deps)
 
 
 def _create_bundle_package(
