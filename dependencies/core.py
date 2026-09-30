@@ -1231,9 +1231,6 @@ def is_file_deletable(filepath):
 def get_runtime_dependencies(
     runtime_site_packages: str, venv_info: VenvInfo
 ) -> dict[str, str]:
-    
-    uv_bin = _find_uv()
-
     script_path = os.path.join(PACKAGE_ROOT, "_runtime_deps.py")
 
     with tempfile.NamedTemporaryFile(
@@ -1249,7 +1246,7 @@ def get_runtime_dependencies(
 
     try:
         subprocess.run(
-            [uv_bin, "run", "python", script_path, output_path],
+            [venv_info.executable_path, script_path, output_path],
             cwd=venv_info.root,
         )
         with open(output_path) as stream:

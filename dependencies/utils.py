@@ -1,9 +1,8 @@
 import os
+import platform
+import subprocess
 import sys
 import time
-import re
-import subprocess
-import platform
 import zipfile
 
 PACKAGE_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -32,8 +31,17 @@ def get_venv_executable(uv_bin: str, venv_root: str) -> str:
         venv_root (str): Path to venv root.
 
     """
+    # Do not use 'uv run' as it does project discovery in parent
+    # directories (e.g. stray 'pyproject.toml' in temp dir) and respects
+    # inherited 'VIRTUAL_ENV'.
+    if PLATFORM_NAME == "windows":
+        python_path = os.path.join(
+            venv_root, ".venv", "Scripts", "python.exe"
+        )
+    else:
+        python_path = os.path.join(venv_root, ".venv", "bin", "python")
     return subprocess.check_output(
-        [uv_bin, "run", "python", "-c" "import sys;print(sys.executable)"],
+        [python_path, "-c", "import sys;print(sys.executable)"],
         text=True,
         cwd=venv_root,
     ).strip()
@@ -49,8 +57,7 @@ def get_venv_python_version(uv_bin: str, venv_root: str) -> str:
     """
     return subprocess.check_output(
         [
-            uv_bin,
-            "run", "python",
+            get_venv_executable(uv_bin, venv_root),
             "-c", "import platform; print(platform.python_version())"
         ],
         text=True,
