@@ -1,8 +1,9 @@
 import os
-import platform
-import subprocess
 import sys
 import time
+import re
+import subprocess
+import platform
 import zipfile
 
 PACKAGE_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -23,45 +24,63 @@ class VenvInfo:
         self.executable_path: str = executable_path
 
 
-def get_venv_executable(uv_bin: str, venv_root: str) -> str:
+def _get_venv_root_path(venv_root: str) -> str:
+    """Return the actual virtual environment root path.
+
+    The helper accepts either the virtual environment directory itself or the
+    project root that contains the default `.venv` directory.
+    """
+
+    for candidate in (
+        venv_root,
+        os.path.join(venv_root, ".venv"),
+    ):
+        if os.path.isfile(os.path.join(candidate, "pyvenv.cfg")):
+            return candidate
+
+    raise FileNotFoundError(
+        f"Could not find a virtual environment in: {venv_root}"
+    )
+
+
+def get_venv_executable(venv_root: str) -> str:
     """Get path to executable in virtual environment.
 
     Args:
-        uv_bin (str): Path to uv binary.
-        venv_root (str): Path to venv root.
+        venv_root (str): Path to venv root or project root containing `.venv`.
 
     """
     # Do not use 'uv run' as it does project discovery in parent
     # directories (e.g. stray 'pyproject.toml' in temp dir) and respects
     # inherited 'VIRTUAL_ENV'.
+    venv_path = _get_venv_root_path(venv_root)
+    executable_parts = [venv_path]
     if PLATFORM_NAME == "windows":
-        python_path = os.path.join(
-            venv_root, ".venv", "Scripts", "python.exe"
-        )
+        executable_parts.extend(["Scripts", "python.exe"])
     else:
-        python_path = os.path.join(venv_root, ".venv", "bin", "python")
-    return subprocess.check_output(
-        [python_path, "-c", "import sys;print(sys.executable)"],
-        text=True,
-        cwd=venv_root,
-    ).strip()
+        executable_parts.extend(["bin", "python"])
+
+    executable_path = os.path.join(*executable_parts)
+    if not os.path.exists(executable_path):
+        raise FileNotFoundError(
+            f"Could not find venv python executable: {executable_path}"
+        )
+    return executable_path
 
 
-def get_venv_python_version(uv_bin: str, venv_root: str) -> str:
+def get_venv_python_version(executable_path: str) -> str:
     """Get path to executable in virtual environment.
 
     Args:
-        uv_bin (str): Path to uv binary.
-        venv_root (str): Path to venv root.
+        executable_path (str): Python executable path.
 
     """
     return subprocess.check_output(
         [
-            get_venv_executable(uv_bin, venv_root),
+            executable_path,
             "-c", "import platform; print(platform.python_version())"
         ],
         text=True,
-        cwd=venv_root,
     ).strip()
 
 
