@@ -634,17 +634,14 @@ def prepare_new_venv(
             f"Failed to create virtual environment at {venv_path}"
         )
 
-    venv_version = get_venv_python_version(
-        uv_bin,
-        output_root
-    )
+    executable_path = get_venv_executable(venv_path)
+    venv_version = get_venv_python_version(executable_path)
     if venv_version != python_version:
         raise RuntimeError(
             f"Creted venv with wrong python version: {venv_version}"
             f" expected: {python_version}"
         )
 
-    executable_path = get_venv_executable(uv_bin, output_root)
 
     return VenvInfo(
         output_root,
@@ -1231,9 +1228,6 @@ def is_file_deletable(filepath):
 def get_runtime_dependencies(
     runtime_site_packages: str, venv_info: VenvInfo
 ) -> dict[str, str]:
-    
-    uv_bin = _find_uv()
-
     script_path = os.path.join(PACKAGE_ROOT, "_runtime_deps.py")
 
     with tempfile.NamedTemporaryFile(
@@ -1249,8 +1243,9 @@ def get_runtime_dependencies(
 
     try:
         subprocess.run(
-            [uv_bin, "run", "python", script_path, output_path],
+            [venv_info.executable_path, script_path, output_path],
             cwd=venv_info.root,
+            check=True,
         )
         with open(output_path) as stream:
             data = json.load(stream)
