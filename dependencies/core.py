@@ -1,50 +1,50 @@
-import os
-import re
-import tempfile
-import copy
-import itertools
-import platform
-import hashlib
-import zipfile
-import json
-import subprocess
 import collections
+import copy
+import hashlib
+import itertools
+import json
+import os
+import platform
+import re
 import shutil
+import subprocess
+import tempfile
 import time
-
-from typing import Union, Any, Optional
-from packaging import version
+import zipfile
 from dataclasses import dataclass
-
-import tomlkit as toml
-from .version_utils import (
-    parse_constraint,
-    EmptyConstraint,
-    VersionConstraint,
-    VersionRangeConstraint,
-    Link,
-    is_url,
-    ParsedUrl,
-)
+from typing import Any, Optional, Union
 
 import ayon_api
+import tomlkit as toml
 from ayon_api import create_dependency_package_basename
+from packaging import version
+from tabulate import tabulate
+
+from .version_utils import (
+    EmptyConstraint,
+    Link,
+    ParsedUrl,
+    VersionConstraint,
+    VersionRangeConstraint,
+    is_url,
+    parse_constraint,
+)
 
 if platform.system().lower() == "linux":
     import distro
 else:
     distro = None
 
+from .custom_solver import solve_dependencies
 from .utils import (
-    run_subprocess,
-    ZipFileLongPaths,
-    get_venv_site_packages,
     PACKAGE_ROOT,
     VenvInfo,
+    ZipFileLongPaths,
     get_venv_executable,
     get_venv_python_version,
+    get_venv_site_packages,
+    run_subprocess,
 )
-from .custom_solver import solve_dependencies
 
 ConstraintClasses = (
     EmptyConstraint,
@@ -1360,33 +1360,26 @@ def _print_installer_data(installer: dict[str, Any]) -> None:
     deps = installer["pythonModules"]
     runtime_deps = installer["runtimePythonModules"]
 
-    label = "AYON launcher"
-    dep_label = "Dependencies:"
-    runtime_dep_label = "Runtime Dependencies:"
-    max_line = max(len(runtime_dep_label), len(label))
+    table = [[installer["version"], installer["pythonVersion"]]]
+    print("AYON launcher:")
+    print(tabulate(table, ["Version", "Python Version"], tablefmt="simple_outline"))
 
-    max_line = max(_calculate_max_line(deps, runtime_deps), max_line)
-
-    sep_mid = max_line * "─"
-    print(f"┌{sep_mid}┐")
-    print(f"│{label.ljust(max_line)}│")
-    sep = f"│{sep_mid}│"
-    print(sep)
-    _print_dep_line("Python", installer["pythonVersion"], max_line)
 
     if deps:
-        print(sep)
-        print(f"│{dep_label.ljust(max_line)}│")
-        for key, value in deps.items():
-            _print_dep_line(key, value, max_line)
+        print("Dependencies:")
+        print(
+            tabulate(
+                tabular_data=deps.items(), headers=["Dependency", "Version"], tablefmt="simple_outline"
+            ))
 
     if runtime_deps:
-        print(sep)
-        print(f"│{runtime_dep_label.ljust(max_line)}│")
-        for key, value in runtime_deps.items():
-            _print_dep_line(key, value, max_line)
-
-    print(f"└{sep_mid}┘")
+        print("Runtime Dependencies:")
+        print(
+            tabulate(
+                tabular_data=runtime_deps.items(),
+                headers=["Dependency", "Version"],
+                tablefmt="simple_outline"
+            ))
 
 
 def _print_addons_data(addons: dict[str, dict[str, Any]]) -> None:
