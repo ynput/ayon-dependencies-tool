@@ -17,6 +17,7 @@ dependencies = [
     "ayon-python-api==1.2.24",
     "click>=8.3",
     "distro>=1.9.0; sys_platform == 'linux'",
+    "tabulate>=0.10.0",
 ]
 
 [dependency-groups]
