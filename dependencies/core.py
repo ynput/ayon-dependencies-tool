@@ -1176,7 +1176,6 @@ def upload_to_server(con, venv_zip_path, package_data):
     # TODO remove this when 'create_dependency_package' does allow the
     #   arguments
     package_data = copy.deepcopy(package_data)
-    package_data.pop("python_version")
     package_data.pop("distro_short")
 
     con.create_dependency_package(**package_data)
