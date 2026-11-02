@@ -51,7 +51,7 @@ repo_root=$(dirname "$(realpath ${BASH_SOURCE[0]})")
 local_uv_root="$repo_root/.uv"
 local_uv_path="$local_uv_root/uv"
 version_command="import os;exec(open(os.path.join('$repo_root', 'version.py')).read());print(__version__);"
-tool_version="$(python <<< ${version_command})"
+tool_version="$(uv run python <<< ${version_command})"
 
 ##############################################################################
 # Detect required version of python
